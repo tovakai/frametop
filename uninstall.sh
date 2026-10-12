@@ -176,7 +176,16 @@ for unit in $units; do
   for file in "$HOME/.config/systemd/user/$unit" "$HOME/.config/systemd/user/steamvr.service.wants/$unit" "$HOME/.config/systemd/user/default.target.wants/$unit"; do
     if [ -e "$file" ]; then echo "ERROR: unit remains: $file" >&2; errors=1; fi
   done
+  if systemctl --user is-active --quiet "$unit"; then
+    echo "ERROR: service still active: $unit" >&2; errors=1
+  fi
+  if systemctl --user is-enabled --quiet "$unit"; then
+    echo "ERROR: service still enabled: $unit" >&2; errors=1
+  fi
 done
+if systemctl --user is-active --quiet frametop-desktop.service; then
+  echo "ERROR: nested desktop service is still running." >&2; errors=1
+fi
 for app in $apps; do
   if [ -e "$HOME/.local/share/applications/$app" ]; then
     echo "ERROR: launcher remains: $app" >&2; errors=1
@@ -202,6 +211,12 @@ rmdir /etc/steamframe /etc/systemd/system/bluetooth.service.d 2>/dev/null || tru
 systemctl daemon-reload'; then
     echo "ERROR: Bluetooth cleanup failed; sudo may be required." >&2; status=1
   fi
+fi
+
+if [ "$dry_run" = 0 ] &&
+   on_frame 'test -e /etc/systemd/system/steamframe-bt-fixups.service || test -e /etc/steamframe/bt-fixups.sh || test -e /etc/systemd/system/bluetooth.service.d/steamframe.conf'; then
+  echo "ERROR: Frametop Bluetooth files remain installed." >&2
+  status=1
 fi
 
 if [ "$remove_checkout" = 1 ]; then
