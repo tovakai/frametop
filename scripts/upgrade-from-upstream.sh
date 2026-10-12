@@ -45,6 +45,15 @@ check_source() {
        fail "upstream source checkout missing at $UPSTREAM_DIR (release-image installs are not yet supported)"
     [[ $(git -C "$UPSTREAM_DIR" rev-parse --show-toplevel 2>/dev/null) == "$UPSTREAM_DIR" ]] ||
         fail 'upstream checkout is not a Git repository at the specified path'
+    # This switch is for upstream Frametop, not a legacy or unrelated fork.
+    local url
+    url=$(git -C "$UPSTREAM_DIR" remote get-url origin 2>/dev/null || true)
+    case "$url" in
+        https://github.com/Frametop/frametop|https://github.com/Frametop/frametop.git|git@github.com:Frametop/frametop.git|\
+https://github.com/DeeJanuz/frametop|https://github.com/DeeJanuz/frametop.git|git@github.com:DeeJanuz/frametop.git|\
+https://github.com/AZumD/frametop|https://github.com/AZumD/frametop.git|git@github.com:AZumD/frametop.git) ;;
+        *) fail "expected the official upstream Frametop remote, got origin '$url'" ;;
+    esac
 }
 
 check_core() {
