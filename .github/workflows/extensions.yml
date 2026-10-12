@@ -6,6 +6,8 @@ on:
       - rebuild/extension-api
   pull_request:
     paths:
+      - 'screens/vr.cpp'
+      - 'justfile'
       - 'screens/extension-motion.h'
       - 'screens/tests/extension-motion-test.cpp'
       - 'extensions/**'
