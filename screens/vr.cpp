@@ -74,6 +74,7 @@
 
 #include "handcut.h"
 #include "keyboard.h"
+#include "extension-motion.h"
 
 #include <drm_fourcc.h>
 #include <openvr.h>
@@ -267,6 +268,12 @@ struct Screen {
     bool visible = false;         // shown in VR right now
     bool alone = false;           // hidden on its own (conceal <screen>), whatever the mode
     float alpha = 1;
+    // Live, unpersisted extension overrides. The compositor owns the per-frame interpolation.
+    float extOpacity = 1, extFadeFrom = 1, extFadeTo = 1;
+    bool extFading = false, extMoving = false;
+    Clock::time_point extFadeStart{}, extMoveStart{};
+    int extFadeMs = 0, extMoveMs = 0;
+    Mat extMoveFrom = Identity(), extMoveTo = Identity();
     vr::TrackedDeviceIndex_t pinned = kNone;  // riding on this controller
     Mat pinRel = Identity();                  // controller -> screen
     Mat pose = Identity();                    // where it is in the room, when not pinned
@@ -747,7 +754,8 @@ void RefreshChrome() {
     }
 }
 
-void SetAbsolute(Screen &s, const Mat &pose) {
+void SetAbsolute(Screen &s, const Mat &pose, bool cancelExtension = true) {
+    if (cancelExtension) s.extMoving = false;
     s.pinned = kNone;
     s.pose = pose;
     vr::VROverlay()->SetOverlayTransformAbsolute(s.overlay, vr::TrackingUniverseStanding, &pose);
@@ -755,6 +763,7 @@ void SetAbsolute(Screen &s, const Mat &pose) {
 }
 
 void Pin(Screen &s, vr::TrackedDeviceIndex_t dev, const Mat &rel) {
+    s.extMoving = false;
     s.pinned = dev;
     s.pinRel = rel;
     vr::VROverlay()->SetOverlayTransformTrackedDeviceRelative(s.overlay, dev, &s.pinRel);
@@ -873,16 +882,17 @@ void UpdateVisibility() {
         // A floating window's panel: while a window floats on it, its output is on, and the
         // window isn't minimized (and once it has a crop).
         if (s.floating) visible = visible && s.floatOn && s.outputOn && !s.minimized && s.cropW > 0;
-        float alpha = 1;
+        float alpha = s.extOpacity;
         Mat p;
         if (visible && s.pinned != kNone && s.pinned != vr::k_unTrackedDeviceIndex_Hmd && s.drag == Drag::None &&
             haveHead && ScreenPose(s, &p)) {
             // A pinned screen shows while you see its front: fully inside the wrist angle,
             // fading out over the last kFade degrees, gone beyond it (and from behind).
             const double a = FacingAngle(p, head);
-            alpha = float(std::clamp((g_wristAngle - a) / kFade, 0.0, 1.0));
-            visible = alpha > 0.02f;
+            alpha *= float(std::clamp((g_wristAngle - a) / kFade, 0.0, 1.0));
         }
+        // Fully faded panels must also stop intercepting laser input.
+        visible = visible && alpha > 0.02f;
         SetVisible(s, visible, alpha);
     }
 }
@@ -1153,6 +1163,7 @@ void StartDrag(Screen &s, Drag mode, vr::TrackedDeviceIndex_t dev) {
                     DragName(mode), DeviceLabel(dev).c_str());
         return;
     }
+    s.extMoving = false;  // controller movement always takes precedence over an extension animation
     s.pinTarget = kNone;
     if (s.pinned != kNone && mode == Drag::Move) {
         // Carried freely; let go, it goes back on the same wrist (unless disarmed).
@@ -2343,6 +2354,27 @@ void ft_vr_forget(const void *key) {
     g_imports.erase(it);
 }
 
+// Runs in ft-screens' existing OpenVR tick, so extensions need no 90 Hz process
+// and cannot leave a stream of queued per-frame position commands behind.
+void StepExtensionMotion() {
+    const auto now = Clock::now();
+    for (auto &[i, s] : g_screens) {
+        if (s.extMoving) {
+            const double phase = std::clamp(std::chrono::duration<double, std::milli>(now - s.extMoveStart).count()
+                                            / s.extMoveMs, 0.0, 1.0);
+            const Mat frame = ft_extension::pose(s.extMoveFrom, s.extMoveTo, phase);
+            s.extMoving = phase < 1.0;
+            SetAbsolute(s, frame, false);
+        }
+        if (s.extFading) {
+            const double phase = std::clamp(std::chrono::duration<double, std::milli>(now - s.extFadeStart).count()
+                                            / s.extFadeMs, 0.0, 1.0);
+            s.extOpacity = ft_extension::fade(s.extFadeFrom, s.extFadeTo, phase);
+            s.extFading = phase < 1.0;
+        }
+    }
+}
+
 void ft_vr_poll(void (*handle)(const struct ft_event *, void *), void *data) {
     if (!g_vr) return;
     RefreshPoses();
@@ -2548,6 +2580,7 @@ void ft_vr_poll(void (*handle)(const struct ft_event *, void *), void *data) {
     }
     UpdateGame();
     UpdateArrange();
+    StepExtensionMotion();
     UpdateVisibility();
     UpdateAttention();
     UpdateAim();
@@ -2641,12 +2674,22 @@ void ft_vr_keyboard_hide(void) {
 // numbered from 1 here, like everywhere the user sees them. "screens" and "all" leave out
 // floating windows.
 void ft_vr_command(const char *cmd, char *reply, int size) {
+    // Version and capability discovery work even with --no-vr.
+    if (!std::strcmp(cmd, "ext api")) return (void)std::snprintf(reply, size, "ok 1");
+    if (!std::strcmp(cmd, "ext caps"))
+        return (void)std::snprintf(reply, size, "ok screen.status screen.opacity screen.move");
     if (!g_vr) return (void)std::snprintf(reply, size, "error no SteamVR (--no-vr)");
     RefreshPoses();
     int n;
     double x, y, z, yaw, pitch, roll, w;
     char word[16], hand[16];
     float r[12];
+    int duration = 0, end = 0;
+    double value = 0;
+    auto extensionScreen = [&](int index) -> Screen * {
+        Screen *s = Find(index);
+        return s && !s->floating && !s->remote ? s : nullptr;
+    };
     auto each = [&](const char *which, auto fn) -> bool {  // "all" or a screen number
         if (std::strcmp(which, "all") == 0) {
             for (auto &[i, s] : g_screens)
@@ -2657,7 +2700,47 @@ void ft_vr_command(const char *cmd, char *reply, int size) {
         if (s) fn(*s);
         return s != nullptr;
     };
-    if (std::sscanf(cmd, "place %d %lf %lf %lf %lf %lf %lf", &n, &x, &y, &z, &yaw, &pitch, &roll) == 7) {
+    if (std::sscanf(cmd, "ext status %d %n", &n, &end) == 1 && end && cmd[end] == '\0') {
+        Screen *s = extensionScreen(n);
+        if (!s) return (void)std::snprintf(reply, size, "error no desktop screen %d", n);
+        std::snprintf(reply, size, "ok opacity %.4f target %.4f fading %d moving %d pinned %s",
+                      s->extOpacity, s->extFadeTo, s->extFading ? 1 : 0, s->extMoving ? 1 : 0,
+                      s->pinned == kNone ? "none" : HandName(s->pinned));
+    } else if (std::sscanf(cmd, "ext opacity %d %lf %d %n", &n, &value, &duration, &end) == 3 &&
+               end && cmd[end] == '\0') {
+        Screen *s = extensionScreen(n);
+        if (!s) return (void)std::snprintf(reply, size, "error no desktop screen %d", n);
+        if (!std::isfinite(value) || value < 0 || value > 1 || duration < 0 || duration > 10000)
+            return (void)std::snprintf(reply, size, "error opacity 0..1 and duration 0..10000ms required");
+        s->extFadeFrom = s->extOpacity;
+        s->extFadeTo = float(value);
+        s->extFadeMs = duration;
+        s->extFadeStart = Clock::now();
+        s->extFading = duration > 0;
+        if (!s->extFading) s->extOpacity = float(value), UpdateVisibility();
+        std::snprintf(reply, size, "ok");
+    } else if (std::sscanf(cmd, "ext move %d %lf %lf %lf %lf %lf %lf %d %n",
+                            &n, &x, &y, &z, &yaw, &pitch, &roll, &duration, &end) == 8 &&
+               end && cmd[end] == '\0') {
+        Screen *s = extensionScreen(n);
+        if (!s) return (void)std::snprintf(reply, size, "error no desktop screen %d", n);
+        if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z) ||
+            !std::isfinite(yaw) || !std::isfinite(pitch) || !std::isfinite(roll) ||
+            duration < 0 || duration > 10000)
+            return (void)std::snprintf(reply, size, "error finite pose and duration 0..10000ms required");
+        if (s->pinned != kNone || s->drag != Drag::None)
+            return (void)std::snprintf(reply, size, "error screen is pinned or being dragged");
+        const Mat target = PanelPose(x, y, z, yaw, pitch, roll);
+        if (!duration) SetAbsolute(*s, target);
+        else {
+            s->extMoveFrom = s->pose;
+            s->extMoveTo = target;
+            s->extMoveStart = Clock::now();
+            s->extMoveMs = duration;
+            s->extMoving = true;
+        }
+        std::snprintf(reply, size, "ok");
+    } else if (std::sscanf(cmd, "place %d %lf %lf %lf %lf %lf %lf", &n, &x, &y, &z, &yaw, &pitch, &roll) == 7) {
         Screen *s = Find(n);
         if (!s) return (void)std::snprintf(reply, size, "error no screen %d", n);
         EndDrag(*s);
