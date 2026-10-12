@@ -103,6 +103,16 @@ elif [ -d "$driver" ]; then
   echo "ERROR: vrpathreg unavailable. Keeping driver files." >&2
   errors=1; driver_safe=0
 fi
+# A successful exit code is not proof that vrpathreg actually removed the entry.
+if [ "$driver_safe" = 1 ] && [ -x "$vrpathreg" ]; then
+  if ! post_paths=$(LD_LIBRARY_PATH=/opt/steamvr/bin/linuxarm64 "$vrpathreg" show 2>/dev/null); then
+    echo "ERROR: cannot verify OpenVR registration after uninstall; keeping driver files." >&2
+    errors=1; driver_safe=0
+  elif grep -F "$driver" <<< "$post_paths" >/dev/null; then
+    echo "ERROR: ft_pointer is still registered; keeping driver files." >&2
+    errors=1; driver_safe=0
+  fi
+fi
 if [ "$driver_safe" = 1 ]; then rm -rf -- "$driver"; fi
 
 echo "== Remove Frametop desktop integration"
@@ -173,6 +183,11 @@ for app in $apps; do
   fi
 done
 if [ -d "$driver" ]; then echo "ERROR: driver files remain." >&2; errors=1; fi
+if [ "$purge" = 1 ]; then
+  for file in "$HOME/.config/frametop" "$HOME/.config/frametop.conf" "$HOME/.config/frametop-input.json" "$HOME/.config/frametop-layout.json" "$HOME/.config/frametop-layout-profiles.json" "$HOME/.config/frametop-instruments" "$HOME/.config/frametop-remote" "$HOME/.local/state/frametop" "$HOME/.cache/frametop"; do
+    if [ -e "$file" ]; then echo "ERROR: user data remains: $file" >&2; errors=1; fi
+  done
+fi
 [ "$errors" != 0 ] || echo "User integration cleanup verified."
 exit "$errors"
 HOST
