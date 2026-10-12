@@ -35,7 +35,7 @@ exec $FRAME_REPO/scripts/start-desktop-on-frame.sh" ;;
 sed 's|@SESSION@|$session/frametop-session.sh|' $session/deckard-nested-desktop.desktop > ~/$override
 [ -f ~/.config/frametop.conf ] || cp $session/frametop.conf.example ~/.config/frametop.conf
 echo \"installed ~/$override\"; grep ^Exec= ~/$override; echo; cat ~/.config/frametop.conf" ;;
-  uninstall) "$frame" --host "rm -f ~/$override && echo 'removed; the launcher uses the stock desktop again'" ;;
+  uninstall) "$frame" --host "rm -f ~/$override && echo 'removed launcher override; for a full uninstall run ./uninstall.sh --purge'" ;;
   screens)
     [[ ${2:-} =~ ^[1-9]$ ]] || { echo "usage: $0 screens N   (1-9)" >&2; exit 2; }
     "$frame" --host "set -e; f=~/.config/frametop.conf
