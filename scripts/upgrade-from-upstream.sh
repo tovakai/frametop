@@ -256,64 +256,7 @@ apply() {
     [[ ! -e "$ROLLBACK_RECORD" && ! -L "$ROLLBACK_RECORD" ]] ||
         fail "a previous switch is still recorded at $ROLLBACK_RECORD; use rollback/status before applying again"
     local kind previous
-    IFS=    printf '\nThis will reinstall core services and the SteamVR pointer driver.\n'
-    printf 'SSH is recommended: changing the active VR desktop can disconnect its terminal.\n'
-    confirm SWITCH
-    backup_settings "$kind" "$previous"
-    if ! (cd "$CORE_DIR" && ./install.sh); then
-        fail "API-core installation failed/interrupted. Original upstream is preserved.
-Use 'bash $CORE_DIR/scripts/upgrade-from-upstream.sh rollback' to restore it."
-    fi
-    printf '\nAPI-enabled Frametop installed. No extensions installed or enabled.\n'
-    status
-}
-
-rollback() {
-    check_frame
-    [[ -f "$ROLLBACK_RECORD" && ! -L "$ROLLBACK_RECORD" ]] ||
-        fail "no saved migration target at $ROLLBACK_RECORD; refusing to guess a rollback version"
-    local kind previous current
-    IFS=$'\t' read -r kind previous < "$ROLLBACK_RECORD"
-    previous=$(canonical "$previous")
-    case "$kind" in
-        source)
-            [[ "$previous" == "$UPSTREAM_DIR" ]] ||
-                fail 'recorded source path differs from configured upstream checkout'
-            check_source ;;
-        release) check_release "$previous"; check_release_image "$previous" ;;
-        *) fail 'saved migration target has an unknown installation type' ;;
-    esac
-    current=$(launcher_owner)
-    case "$current" in
-        fork) ;;
-        upstream-source)
-            [[ "$kind" == source ]] || fail 'unexpected source installation is active' ;;
-        upstream-release)
-            [[ "$kind" == release && "$(active_release_dir)" == "$previous" ]] ||
-                fail 'a different release is currently active' ;;
-        *) fail 'active desktop launcher changed to an unknown installation; refusing rollback' ;;
-    esac
-    printf 'Restoring the exact previous upstream %s: %s\n' "$kind" "$previous"
-    printf 'No extensions involved. Current settings will not be automatically overwritten.\n'
-    confirm ROLLBACK
-    if ! (cd "$previous" && ./install.sh); then
-        fail "upstream reinstall failed. Rollback target is still saved in $ROLLBACK_RECORD"
-    fi
-    rm -- "$ROLLBACK_RECORD"
-    printf '\nOriginal upstream installer completed. Follow its SteamVR restart prompt.\n'
-    status
-}
-
-[[ $# == 1 ]] || { usage >&2; exit 2; }
-case "$1" in
-    plan) plan ;;
-    apply) apply ;;
-    status) status ;;
-    rollback) rollback ;;
-    -h|--help|help) usage ;;
-    *) usage >&2; exit 2 ;;
-esac
-\t' read -r kind previous < <(previous_target)
+    IFS=$'\t' read -r kind previous < <(previous_target)
     [[ "$kind" != release ]] || check_release_image "$previous"
     plan
     printf '\nThis will reinstall core services and the SteamVR pointer driver.\n'
@@ -340,7 +283,7 @@ rollback() {
             [[ "$previous" == "$UPSTREAM_DIR" ]] ||
                 fail 'recorded source path differs from configured upstream checkout'
             check_source ;;
-        release) check_release "$previous" ;;
+        release) check_release "$previous"; check_release_image "$previous" ;;
         *) fail 'saved migration target has an unknown installation type' ;;
     esac
     current=$(launcher_owner)
