@@ -23,6 +23,7 @@ for name in upstream core; do
   git -C "$tmp/$name" commit -qm 'test fixture'
 done
 git -C "$tmp/core" remote add origin https://github.com/tovakai/frametop.git
+git -C "$tmp/upstream" remote add origin https://github.com/Frametop/frametop.git
 printf 'Exec=%s/session/frametop-session.sh\n' "$tmp/upstream" > \
   "$tmp/home/.local/share/applications/deckard-nested-desktop.desktop"
 printf 'preserve me\n' > "$tmp/home/.config/frametop.conf"
@@ -37,6 +38,11 @@ current=$("${command[@]}" status)
 [[ "$current" == *"Active Steam Desktop launcher: upstream"* ]]
 after=$(find "$tmp/home" -type f -printf '%P %s\n' | sort)
 [[ "$before" == "$after" ]] || { echo 'plan mutated user data' >&2; exit 1; }
+git -C "$tmp/upstream" remote set-url origin https://github.com/tovakai/frametop.git
+if "${command[@]}" plan >/dev/null 2>&1; then
+  echo 'non-upstream installation not rejected' >&2; exit 1
+fi
+git -C "$tmp/upstream" remote set-url origin https://github.com/Frametop/frametop.git
 rm -f "$tmp/core/screens/extension-motion.h"
 if "${command[@]}" plan >/dev/null 2>&1; then
   echo 'missing extension API not rejected' >&2; exit 1
