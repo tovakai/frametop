@@ -53,6 +53,7 @@ run bash test/test_display_settings_ui.sh
 run bash test/test_boot_safety.sh
 run bash test/test_revive_desktop.sh
 run bash test/test_release_packaging.sh
+run bash test/test_uninstall.sh
 
 if [ "$fail" -ne 0 ]; then
   echo "unit suite failed" >&2

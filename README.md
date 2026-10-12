@@ -121,15 +121,22 @@ git pull && ./install.sh
 
 ## Uninstall
 
+The **supported** uninstaller is `./uninstall.sh`. It runs on the Steam Frame or remotely over SSH, without re-syncing/reinstalling the repo. Run it **from SSH or the stock SteamOS desktop**, not from inside the nested Frametop desktop (which will be stopped).
+
+```bash
+./uninstall.sh --dry-run --purge             # preview without changing anything
+./uninstall.sh                               # uninstall installed integration, keep personal layouts/settings
+./uninstall.sh --purge                       # ALSO delete layouts, profiles, instruments, state, caches, backgrounds
+./uninstall.sh --purge --remove-checkout     # ALSO remove ~/frametop or ~/dev/frametop on the Frame
 ```
-./desktops.sh uninstall                # the launcher's Desktop entry goes back to the stock desktop
-./desktops.sh relay uninstall
-pointer/helper/run.sh uninstall
-pointer/driver/install.sh uninstall    # then restart SteamVR
-input-settings/install.sh uninstall
-display-settings/install.sh uninstall
-setup/bluetooth/install.sh uninstall   # if you installed the Bluetooth fixes
-```
+
+For a stronger opt-in teardown, add `--remove-build-container` together with `--purge`. **Warning:** the installer used the generic Distrobox name `dev`; it may also contain unrelated work. The distrobox executable and its source checkout are **not** removed because they can be used by other software. All destructive modes ask for confirmation unless `--yes` is passed.
+
+The script stops Frametop without stopping SteamVR, disables/cleans the relay and optional pointer/hand-tracking services, restores the stock Desktop launcher, unregisters the OpenVR `ft_pointer` driver **before** deleting its files, removes the Frametop application shortcuts and decoration, and removes Frametop's system Bluetooth fixups (may prompt for sudo). If OpenVR unregistering fails, it **keeps the driver files** and reports an incomplete uninstall rather than risking an unbootable SteamVR session. Restart SteamVR manually afterward if the pointer driver was loaded.
+
+`./desktops.sh uninstall` is **launcher-only**; it is not a full uninstall.
+
+External Nix/`steam-frame-nix` Steam UI patches, Steam per-game launch options, unrelated home-manager settings, and stock SteamVR settings are intentionally not overwritten. If you installed game-route through Nix or left `ft-game-run` in a game's launch options, remove those separately before deleting your checkout. This uninstaller has a dependency-light dry-run regression test, but a full purge must still be tested on a Frame.
 
 ## How it works
 
