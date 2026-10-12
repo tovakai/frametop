@@ -1,0 +1,37 @@
+name: Extension API checks
+
+on:
+  push:
+    branches:
+      - rebuild/extension-api
+  pull_request:
+    paths:
+      - 'screens/vr.cpp'
+      - 'justfile'
+      - 'screens/extension-motion.h'
+      - 'screens/tests/extension-motion-test.cpp'
+      - 'extensions/**'
+      - 'docs/extensions.md'
+      - 'docs/upgrade-from-upstream.md'
+      - 'scripts/upgrade-from-upstream.sh'
+      - 'scripts/tests/test-upgrade-from-upstream.sh'
+      - '.github/workflows/extensions.yml'
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Client protocol and syntax
+        run: |
+          python3 -m py_compile extensions/ft_ext.py
+          python3 extensions/tests/test_ft_ext.py
+      - name: Upstream-to-fork migration safety
+        run: |
+          bash -n scripts/upgrade-from-upstream.sh
+          bash scripts/tests/test-upgrade-from-upstream.sh
+      - name: Transition geometry
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror screens/tests/extension-motion-test.cpp -o /tmp/ft-ext-motion-test
+          /tmp/ft-ext-motion-test

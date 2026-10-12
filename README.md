@@ -225,6 +225,18 @@ A Plasma session runs nested inside ft-screens (`screens/`), a small Wayland com
 
 `pack/` builds Frametop as an OCI image: the toolchain, the native binaries, and the locked Python environment (via [uv](https://docs.astral.sh/uv/)), built and tested by GitHub Actions. It is the groundwork for installing Frametop without building anything on the headset. No installer uses it yet. For development, `./ft dev build` builds the image and `./ft dev test` runs the tests inside it. [pack/design.md](pack/design.md) explains why an image and what is still open, and [pack/README.md](pack/README.md) documents the image itself.
 
+## Experimental extension API (fork development)
+
+This fork is developing a small, versioned external control API for optional
+spatial features such as profiles, follow modes, gaze attention and toolbars.
+It is **not** a general plugin manager yet, and the compositor changes are not
+headset-verified. See [the API contract and example client](docs/extensions.md).
+
+For a **core-only switch** from a source-installed upstream Frametop to this
+API-enabled fork (with an independent rollback path), see
+[Upgrade from upstream](docs/upgrade-from-upstream.md). This does not install
+or manage any optional extensions.
+
 ## Developing from a PC
 
 The scripts also work from a Linux or WSL PC over SSH, which is easier for editing code. On the Frame they use the local checkout; on a PC they sync the repo to `~/dev/frametop` on the Frame and run there.

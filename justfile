@@ -19,7 +19,7 @@ test-python:
     set -uo pipefail
     python3 -c 'import PySide6, numpy, cv2' || { echo "python3 can't import PySide6, numpy, and cv2"; exit 1; }
     status=0
-    for t in input/test/*.py hands/tests/test_*.py hands/rec/tests/*.py gaze/test/*.py pack/test/*.py; do
+    for t in input/test/*.py hands/tests/test_*.py hands/rec/tests/*.py gaze/test/*.py pack/test/*.py extensions/tests/test_*.py; do
         [ -f "$t" ] || continue
         if python3 "$t" >/dev/null; then echo "$t: ok"; else echo "$t: FAILED"; status=1; fi
     done
@@ -40,6 +40,9 @@ test-c:
     gcc -std=c11 -Wall -Wextra -Werror screens/tests/relay-buttons-test.c \
       -o build/tests/relay-buttons-test
     build/tests/relay-buttons-test && echo "screens/tests/relay-buttons-test.c: ok"
+    g++ -std=c++17 -Wall -Wextra -Werror screens/tests/extension-motion-test.cpp \
+      -o build/tests/extension-motion-test
+    build/tests/extension-motion-test && echo "screens/tests/extension-motion-test.cpp: ok"
 
 # shell scripts: syntax-gate everything that ships. No git: the image has
 # none, and a mounted checkout can trip "dubious ownership" — find lists
