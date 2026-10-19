@@ -341,11 +341,13 @@ int main(int argc, char **argv) {
     vr::VROverlay()->ShowOverlay(ov);
     std::printf("test panel %.2f m wide, %.2f m ahead; Ctrl+C to stop\n", width, distance);
     if (stereoPreview)
-        std::printf("STEREO SMOKE %s: %.4f strength, %.2f convergence, swap %d; %.0f sec maximum\n"
-                    "calibrated mode: ORANGE square should be in front of the grid, CYAN circle behind it;\n"
-                    "cover each eye: LEFT sees red marker, RIGHT sees blue marker.\n",
+        std::printf("STEREO SMOKE %s: %.4f strength, %.2f convergence, swap %d; %.0f sec maximum\n",
                     stereoLuminance ? "luminance checker" : "calibrated near/far", stereoStrength,
                     stereoConvergence, stereoSwap ? 1 : 0, seconds);
+    if (stereoPreview && !stereoLuminance)
+        std::printf("ORANGE square should float in front of the grid, CYAN circle behind it.\n"
+                    "Cover each eye: LEFT sees red marker, RIGHT sees blue marker.\n"
+                    "Try --stereo-strength 0 for the same scene without disparity.\n");
 
     handcut::Hands hands;
     bool cutting = false;
