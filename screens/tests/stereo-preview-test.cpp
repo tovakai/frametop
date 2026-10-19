@@ -22,4 +22,10 @@ int main() {
     assert(!same(left, Preview{0.01f, 0.5f, true}));
     assert(!same(left, Preview{0.02f, 0.5f, false}));
     assert(!same(left, Preview{0.01f, 0.6f, false}));
+    // The internal optical calibration target must invalidate cached GPU output,
+    // while normal extension configurations continue using luminance fake depth.
+    assert(!left.calibration);
+    assert(!same(left, Preview{0.01f, 0.5f, false, true}));
+    assert(same(Preview{0.01f, 0.5f, false, true},
+                Preview{0.01f, 0.5f, false, true}));
 }
