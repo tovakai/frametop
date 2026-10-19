@@ -101,6 +101,44 @@ independently installed extensions. A future depth worker needs a separate,
 versioned capability for safe, synchronized depth-map transport; this
 capability must not be renamed to imply arbitrary depth maps are supported.
 
+## Safe first headset test (no desktop replacement)
+
+**Do not start the whole experimental desktop for this smoke test.** On
+2026-10-19, compiling the experimental branch and starting it as an entire
+desktop led to a black display that recovered only after SteamVR restarted.
+We have not determined why; the isolated test avoids repeating that operation.
+
+The existing `ft-handtest` tool now accepts `--stereo-preview`. It draws a
+temporary high-contrast checker pattern in its **own** SteamVR overlay, using
+the *same* GPU renderer and SBS code as the screen compositor. It does not
+install files, replace the running Frametop compositor, change its control
+socket, restart SteamVR or require `ft-hands`.
+
+On the Steam Frame, with the working VR environment already running:
+
+```sh
+cd ~/frametop-stereo-test
+git pull --ff-only
+./screens/build.sh
+./scripts/frame.sh -C screens './build/ft-handtest --stereo-preview --seconds 20'
+```
+
+The test is bounded to **20 seconds** by default (maximum 60), and closing
+the process with Ctrl+C removes its overlay immediately. Initial strength is
+0.003, convergence 0.5 and normal eye order. Optional flags:
+`--stereo-strength X`, `--stereo-convergence X`, `--stereo-swap`.
+Keep the initial strength low. Stop if vision feels strained.
+
+**Expected:** your existing Frametop displays continue to work; a temporary
+nearby checker-pattern overlay appears and shows slightly different views to
+each eye. A successful build or `ext caps` reply alone does not prove that
+stereo works in SteamVR. Record whether the panel appears, whether each eye
+sees it, and whether its disparity is comfortable. If it fails, collect the
+terminal output without restarting or reinstalling the desktop.
+
+This tests the GPU stereo composition, **not** extension API commands or AI
+depth inference. Only after it passes should we consider a per-screen test.
+
 ## Python client
 
 Only the standard library is required. Use it as a module or a command:
