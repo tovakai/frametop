@@ -479,7 +479,8 @@ bool Renderer::Init(const std::vector<uint64_t> &modifiers, std::function<void(c
     stereoProg_ = Program(kStereo);
     cutProg_ = Program(kCut);
     markProg_ = Program(kMark);
-    if (!copyProg_ || !stereoProg_ || !cutProg_ || !markProg_) return false;
+    if (!copyProg_ || !cutProg_ || !markProg_) return false;
+    if (!stereoProg_) std::fprintf(stderr, "handcut: stereo preview shader unavailable; hand cutouts still supported\n");
     const float quad[] = {0, 0, 1, 0, 0, 1, 1, 1};
     glGenBuffers(1, &vbo_);
     glBindBuffer(GL_ARRAY_BUFFER, vbo_);
