@@ -335,8 +335,40 @@ uniform samplerExternalOES tex;
 uniform float strength;
 uniform float convergence;
 uniform float eyeSign;
+uniform float calibration;
+uniform float eyeIndex;
 varying vec2 uv;
 void main() {
+    if (calibration > 0.5) {
+        // Optical alignment target. The imported texture is a stationary,
+        // zero-disparity grid. Near orange and far cyan geometry use known
+        // offsets, so this tests stereoscopy rather than guessed luminance.
+        vec3 color = texture2D(tex, uv).rgb;
+
+        // Unshifted yellow crosshair: physical panel/screen reference plane.
+        if ((abs(uv.x - 0.5) < 0.0015 && abs(uv.y - 0.5) < 0.30) ||
+            (abs(uv.y - 0.5) < 0.0025 && abs(uv.x - 0.5) < 0.37))
+            color = vec3(0.9, 0.83, 0.20);
+
+        // Far: uncrossed disparity. Draw first so Near can occlude it.
+        vec2 behind = uv - vec2(eyeSign * strength * 0.6, 0.0);
+        if (distance(behind, vec2(0.60, 0.50)) < 0.165)
+            color = vec3(0.14, 0.77, 0.94);
+
+        // Near: crossed disparity, a square visibly in front of the grid.
+        vec2 inFront = uv + vec2(eyeSign * strength, 0.0);
+        if (max(abs(inFront.x - 0.43), abs(inFront.y - 0.50)) < 0.125)
+            color = vec3(1.0, 0.42, 0.10);
+
+        // Small eye-order markers: LEFT eye gets red, RIGHT gets blue.
+        // Cover each eye in turn to confirm SBS ordering. No rivalry
+        // elsewhere in the frame, and eye swapping changes disparity only.
+        if (uv.x > 0.025 && uv.x < 0.060 && uv.y > 0.90 && uv.y < 0.955)
+            color = eyeIndex < 0.5 ? vec3(1.0, 0.15, 0.18) : vec3(0.15, 0.45, 1.0);
+        gl_FragColor = vec4(color, 1.0);
+        return;
+    }
+    // Production-preview placeholder: brightness is FAKE depth, not geometry.
     vec3 source = texture2D(tex, uv).rgb;
     float fakeDepth = dot(source, vec3(0.299, 0.587, 0.114));
     float delta = eyeSign * strength * (fakeDepth - convergence);
@@ -651,6 +683,8 @@ void Renderer::Draw(Output &o, unsigned tex, int w, int h, const std::vector<Cap
             glUniform1f(glGetUniformLocation(program, "convergence"), preview.convergence);
             const float eyeSign = (e == 0 ? -0.5f : 0.5f) * (preview.swap ? -1.0f : 1.0f);
             glUniform1f(glGetUniformLocation(program, "eyeSign"), eyeSign);
+            glUniform1f(glGetUniformLocation(program, "calibration"), preview.calibration ? 1.0f : 0.0f);
+            glUniform1f(glGetUniformLocation(program, "eyeIndex"), float(e));
         }
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         // take alpha away where the hand is; the colour stays (straight alpha)
