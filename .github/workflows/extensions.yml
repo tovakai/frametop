@@ -11,6 +11,7 @@ on:
       - 'screens/extension-motion.h'
       - 'screens/stereo-preview.h'
       - 'screens/handcut.cpp'
+      - 'screens/handtest.cpp'
       - 'screens/handcut.h'
       - 'screens/tests/extension-motion-test.cpp'
       - 'screens/tests/stereo-preview-test.cpp'
