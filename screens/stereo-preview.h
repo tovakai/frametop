@@ -13,6 +13,9 @@ struct Preview {
     float strength = 0.0f;     // 0 disables the effect
     float convergence = 0.5f;  // neutral brightness/depth plane, 0..1
     bool swap = false;
+    // Internal test only: draw calibrated near/far shapes instead of inferring
+    // depth from source luminance. Never exposed through extension commands.
+    bool calibration = false;
 };
 
 inline bool valid(double strength, double convergence, int swap) {
@@ -24,7 +27,8 @@ inline bool valid(double strength, double convergence, int swap) {
 inline bool enabled(const Preview &p) { return p.strength > 0.0f; }
 
 inline bool same(const Preview &a, const Preview &b) {
-    return a.strength == b.strength && a.convergence == b.convergence && a.swap == b.swap;
+    return a.strength == b.strength && a.convergence == b.convergence &&
+           a.swap == b.swap && a.calibration == b.calibration;
 }
 
 }  // namespace ft_stereo
