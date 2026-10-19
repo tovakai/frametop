@@ -296,7 +296,8 @@ struct Screen {
     ft_dmabuf buf{};
     vr::SharedTextureHandle_t plain = 0;  // that buffer's SteamVR import
     uint64_t frames = 0;          // client frames presented (a cutout buffer's "serial")
-    bool cutting = false;         // showing a cutout buffer (side by side) instead
+    ft_stereo::Preview stereoPreview{};  // opt-in diagnostic stereo; runtime only
+    bool cutting = false;         // showing a stereo/cutout buffer (side by side) instead
     vr::SharedTextureHandle_t cutShown = 0;  // ...this one
     double chrome = 0.3;          // the bar's width; the other controls follow it (ChromeSize)
     double grip = 0.04;           // the corner tab's and the round buttons' size
@@ -1989,7 +1990,12 @@ void UpdateCutouts() {
         bool cut = hands && s.visible && !s.floating && s.key && s.width > 0 && ScreenPose(s, &p) &&
                    handcut::Project({p, s.metres, s.heightMetres(), s.curve, s.width, s.height}, g_hands.capsules(),
                                     eyes, spots);
-        const handcut::Output *out = cut && CutterReady() ? g_cutter.Composite(i, s.key, s.frames, s.buf, spots) : nullptr;
+        // One renderer and overlay state machine for both effects. A stereo preview
+        // continues even without tracked hands; cutouts can share the same pass.
+        const bool preview = ft_stereo::enabled(s.stereoPreview) && s.visible && !s.floating &&
+                             s.key && s.width > 0;
+        const handcut::Output *out = (cut || preview) && CutterReady()
+            ? g_cutter.Composite(i, s.key, s.frames, s.buf, spots, s.stereoPreview) : nullptr;
         const vr::SharedTextureHandle_t h = out ? ImportCutout(out) : 0;
         if (!h) {
             StopCutting(s);
@@ -2677,7 +2683,7 @@ void ft_vr_command(const char *cmd, char *reply, int size) {
     // Version and capability discovery work even with --no-vr.
     if (!std::strcmp(cmd, "ext api")) return (void)std::snprintf(reply, size, "ok 1");
     if (!std::strcmp(cmd, "ext caps"))
-        return (void)std::snprintf(reply, size, "ok screen.status screen.opacity screen.move");
+        return (void)std::snprintf(reply, size, "ok screen.status screen.opacity screen.move screen.stereo.preview");
     if (!g_vr) return (void)std::snprintf(reply, size, "error no SteamVR (--no-vr)");
     RefreshPoses();
     int n;
@@ -2706,6 +2712,30 @@ void ft_vr_command(const char *cmd, char *reply, int size) {
         std::snprintf(reply, size, "ok opacity %.4f target %.4f fading %d moving %d pinned %s",
                       s->extOpacity, s->extFadeTo, s->extFading ? 1 : 0, s->extMoving ? 1 : 0,
                       s->pinned == kNone ? "none" : HandName(s->pinned));
+    } else if (std::sscanf(cmd, "ext stereo-preview %d %15s %n", &n, word, &end) == 2 && end) {
+        Screen *s = extensionScreen(n);
+        if (!s) return (void)std::snprintf(reply, size, "error no desktop screen %d", n);
+        if (!std::strcmp(word, "state") && cmd[end] == '\0') {
+            const auto &p = s->stereoPreview;
+            std::snprintf(reply, size, "ok %s strength %.5f convergence %.5f swap %d mode luminance",
+                          ft_stereo::enabled(p) ? "on" : "off", p.strength, p.convergence, p.swap ? 1 : 0);
+        } else if (!std::strcmp(word, "off") && cmd[end] == '\0') {
+            s->stereoPreview = {};
+            std::snprintf(reply, size, "ok");
+        } else if (!std::strcmp(word, "on")) {
+            double strength = 0, convergence = 0;
+            int swap = 0, finish = 0, parsedScreen = 0;
+            const int parsed = std::sscanf(cmd, "ext stereo-preview %d on %lf %lf %d %n",
+                                           &parsedScreen, &strength, &convergence, &swap, &finish);
+            if (parsed != 4 || !finish || cmd[finish] != '\0' || parsedScreen != n ||
+                !ft_stereo::valid(strength, convergence, swap))
+                return (void)std::snprintf(reply, size,
+                    "error expected on STRENGTH(0..0.03) CONVERGENCE(0..1) SWAP(0|1)");
+            s->stereoPreview = {float(strength), float(convergence), swap != 0};
+            std::snprintf(reply, size, "ok");
+        } else {
+            std::snprintf(reply, size, "error expected state|off|on <strength> <convergence> <swap>");
+        }
     } else if (std::sscanf(cmd, "ext opacity %d %lf %d %n", &n, &value, &duration, &end) == 3 &&
                end && cmd[end] == '\0') {
         Screen *s = extensionScreen(n);
