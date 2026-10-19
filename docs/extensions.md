@@ -124,17 +124,29 @@ git pull --ff-only
 ```
 
 The test is bounded to **20 seconds** by default (maximum 60), and closing
-the process with Ctrl+C removes its overlay immediately. Initial strength is
-0.003, convergence 0.5 and normal eye order. Optional flags:
-`--stereo-strength X`, `--stereo-convergence X`, `--stereo-swap`.
+the process with Ctrl+C removes its overlay immediately. The default strength
+is now **0.006** (not the earlier barely-visible 0.003), convergence 0.5.
+Optional flags: `--stereo-strength X`, `--stereo-swap`.
 Keep the initial strength low. Stop if vision feels strained.
 
-**Expected:** your existing Frametop displays continue to work; a temporary
-nearby checker-pattern overlay appears and shows slightly different views to
-each eye. A successful build or `ext caps` reply alone does not prove that
-stereo works in SteamVR. Record whether the panel appears, whether each eye
-sees it, and whether its disparity is comfortable. If it fails, collect the
-terminal output without restarting or reinstalling the desktop.
+**Expected:** your existing Frametop displays continue to work. The new
+calibration panel has an unshifted background grid with a yellow crosshair,
+an **orange square** that should appear *in front* of the grid, and a **cyan
+circle** that should appear *behind* it. They have explicit known disparities,
+not guessed luminance depth, so eye order and perceived depth can be inspected
+directly. Cover one eye at a time: the LEFT eye should see a **red** marker in
+a corner, and the RIGHT eye a **blue** marker in the same place. Incorrect
+eye colors mean SBS eye order needs investigation; reversed perceived depth
+with correct eye colors can be checked with `--stereo-swap`.
+
+For comparison with the original luminance-as-fake-depth checker, use
+`--stereo-luminance` with `--stereo-preview`. That mode is less reliable
+for visually judging stereoscopy and does not establish a foreground object.
+
+A successful build or `ext caps` reply alone does not prove that stereo works
+in SteamVR. Record whether the panel appears, whether each eye sees it, and
+whether its disparity is comfortable. If it fails, collect the terminal
+output without restarting or reinstalling the desktop.
 
 This tests the GPU stereo composition, **not** extension API commands or AI
 depth inference. Only after it passes should we consider a per-screen test.
