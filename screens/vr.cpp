@@ -1994,8 +1994,13 @@ void UpdateCutouts() {
         // continues even without tracked hands; cutouts can share the same pass.
         const bool preview = ft_stereo::enabled(s.stereoPreview) && s.visible && !s.floating &&
                              s.key && s.width > 0;
-        const handcut::Output *out = (cut || preview) && CutterReady()
-            ? g_cutter.Composite(i, s.key, s.frames, s.buf, spots, s.stereoPreview) : nullptr;
+        const bool ready = (cut || preview) && CutterReady();
+        const bool stereoReady = preview && ready && g_cutter.SupportsStereo();
+        // With a broken preview shader, normal cutouts still work. With neither
+        // available effect, restore the ordinary client buffer, never a black panel.
+        const handcut::Output *out = ready && (cut || stereoReady)
+            ? g_cutter.Composite(i, s.key, s.frames, s.buf, spots,
+                                 stereoReady ? s.stereoPreview : ft_stereo::Preview{}) : nullptr;
         const vr::SharedTextureHandle_t h = out ? ImportCutout(out) : 0;
         if (!h) {
             StopCutting(s);
