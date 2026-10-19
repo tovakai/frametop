@@ -6,7 +6,7 @@
 //   ft-handtest --stereo-preview [--stereo-strength 0.003] [--seconds 20]
 // The preview draws ONE temporary overlay; it never restarts the desktop.
 //
-// Needs hand tracking running (hands/run.sh; ft-hands publishes /run/user/UID/frametop-hands/hands).
+// The hand-cutout test needs ft-hands; --stereo-preview does NOT need tracking.
 // Build: screens/build.sh (build/ft-handtest), run in the dev container.
 #include "handcut.h"
 
