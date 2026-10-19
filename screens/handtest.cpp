@@ -3,6 +3,8 @@
 // in front of it, each eye sees through it, like ft-screens' screens with cutouts.
 //
 //   ft-handtest [--distance m] [--width m] [--seconds s]
+//   ft-handtest --stereo-preview [--stereo-strength 0.003] [--seconds 20]
+// The preview draws ONE temporary overlay; it never restarts the desktop.
 //
 // Needs hand tracking running (hands/run.sh; ft-hands publishes /run/user/UID/frametop-hands/hands).
 // Build: screens/build.sh (build/ft-handtest), run in the dev container.
@@ -52,8 +54,9 @@ vr::SharedTextureHandle_t Import(const ft_dmabuf &b) {
     return h;
 }
 
-// The stand-in "client" buffer: a light grey grid, linear so the CPU can draw it.
-bool TestPattern(int drm, int w, int h, gbm_bo **out, ft_dmabuf *b) {
+// The stand-in "client" buffer. The optional high-contrast calibration grid
+// gives the stereo shader distinguishable brightness-based pseudo-depth planes.
+bool TestPattern(int drm, int w, int h, gbm_bo **out, ft_dmabuf *b, bool stereoCalibration = false) {
     gbm_device *gbm = gbm_create_device(drm);
     gbm_bo *bo = gbm_bo_create(gbm, w, h, GBM_FORMAT_ABGR8888, GBM_BO_USE_LINEAR | GBM_BO_USE_RENDERING);
     if (!bo) return false;
@@ -64,9 +67,16 @@ bool TestPattern(int drm, int w, int h, gbm_bo **out, ft_dmabuf *b) {
     for (int y = 0; y < h; ++y)
         for (int x = 0; x < w; ++x) {
             uint8_t *p = px + size_t(y) * stride + size_t(x) * 4;
-            const bool line = x % 80 < 3 || y % 80 < 3;
-            const uint8_t g = line ? 90 : uint8_t(200 + 30 * x / w);
-            p[0] = g, p[1] = g, p[2] = uint8_t(line ? 160 : g), p[3] = 255;
+            if (stereoCalibration) {
+                // Alternating near/far luminance with thin mid-gray reference lines.
+                const bool line = x % 200 < 3 || y % 180 < 3;
+                const uint8_t gray = line ? 128 : (((x / 200 + y / 180) & 1) ? 42 : 228);
+                p[0] = gray, p[1] = gray, p[2] = gray, p[3] = 255;
+            } else {
+                const bool line = x % 80 < 3 || y % 80 < 3;
+                const uint8_t g = line ? 90 : uint8_t(200 + 30 * x / w);
+                p[0] = g, p[1] = g, p[2] = uint8_t(line ? 160 : g), p[3] = 255;
+            }
         }
     gbm_bo_unmap(bo, data);
     *b = {};
@@ -201,11 +211,28 @@ int RunProbe(vr::VROverlayHandle_t ov, const handcut::Panel &panel, handcut::Ren
 
 int main(int argc, char **argv) {
     double distance = 0.8, width = 1.0, seconds = 0, leadMs = -1, dotMm = 3;
-    bool probe = false;
+    double stereoStrength = 0.003, stereoConvergence = 0.5;
+    bool probe = false, stereoPreview = false, stereoSwap = false;
     std::string logPath = "/tmp/handprobe-" + std::to_string(time(nullptr)) + ".jsonl";
     for (int i = 1; i < argc; ++i) {
         const bool more = i + 1 < argc;
         if (!std::strcmp(argv[i], "--probe")) probe = true;
+        else if (!std::strcmp(argv[i], "--stereo-preview")) stereoPreview = true;
+        else if (!std::strcmp(argv[i], "--stereo-swap")) stereoPreview = stereoSwap = true;
+        else if (!std::strcmp(argv[i], "--stereo-strength") && more) {
+            stereoPreview = true;
+            char *end = nullptr;
+            stereoStrength = std::strtod(argv[++i], &end);
+            if (!end || end == argv[i] || *end != '\0')
+                return std::fprintf(stderr, "invalid --stereo-strength\n"), 2;
+        }
+        else if (!std::strcmp(argv[i], "--stereo-convergence") && more) {
+            stereoPreview = true;
+            char *end = nullptr;
+            stereoConvergence = std::strtod(argv[++i], &end);
+            if (!end || end == argv[i] || *end != '\0')
+                return std::fprintf(stderr, "invalid --stereo-convergence\n"), 2;
+        }
         else if (!std::strcmp(argv[i], "--distance") && more) distance = std::atof(argv[++i]);
         else if (!std::strcmp(argv[i], "--width") && more) width = std::atof(argv[++i]);
         else if (!std::strcmp(argv[i], "--seconds") && more) seconds = std::atof(argv[++i]);
@@ -213,8 +240,23 @@ int main(int argc, char **argv) {
         else if (!std::strcmp(argv[i], "--dot-mm") && more) dotMm = std::atof(argv[++i]);
         else if (!std::strcmp(argv[i], "--log") && more) logPath = argv[++i];
         else return std::fprintf(stderr, "usage: ft-handtest [--distance m] [--width m] [--seconds s] "
-                                         "[--probe [--lead ms] [--dot-mm mm] [--log FILE]]\n"), 2;
+                                         "[--probe [--lead ms] [--dot-mm mm] [--log FILE]] "
+                                         "[--stereo-preview [--stereo-strength 0..0.03] "
+                                         "[--stereo-convergence 0..1] [--stereo-swap]]\n"), 2;
     }
+    // A timed overlay on a running SteamVR instance is safer than replacing a
+    // desktop compositor. Even a lost terminal cannot leave this test forever.
+    if (stereoPreview) {
+        if (probe) return std::fprintf(stderr, "--probe and --stereo-preview are exclusive\n"), 2;
+        if (!ft_stereo::valid(stereoStrength, stereoConvergence, stereoSwap ? 1 : 0))
+            return std::fprintf(stderr, "invalid stereo settings\n"), 2;
+        if (!std::isfinite(seconds) || seconds < 0 || seconds > 60)
+            return std::fprintf(stderr, "stereo preview duration must be 0..60 seconds\n"), 2;
+        if (seconds == 0) seconds = 20;   // auto-clean up without Ctrl+C
+    }
+    const ft_stereo::Preview stereo = stereoPreview
+        ? ft_stereo::Preview{float(stereoStrength), float(stereoConvergence), stereoSwap}
+        : ft_stereo::Preview{};
     signal(SIGINT, Stop);
     signal(SIGTERM, Stop);
 
@@ -237,17 +279,21 @@ int main(int argc, char **argv) {
             if (it != imports.end()) vr::VRIPCResourceManager()->UnrefResource(it->second), imports.erase(it);
         }))
         return 1;
+    if (stereoPreview && !renderer.SupportsStereo())
+        return std::fprintf(stderr, "stereo preview shader unavailable\n"), 1;
 
     const int W = 1600, H = 900;
     const int drm = open("/dev/dri/renderD128", O_RDWR | O_CLOEXEC);
     gbm_bo *bo = nullptr;
     ft_dmabuf client;
-    if (drm < 0 || !TestPattern(drm, W, H, &bo, &client)) return std::fprintf(stderr, "can't make the test pattern\n"), 1;
+    if (drm < 0 || !TestPattern(drm, W, H, &bo, &client, stereoPreview)) return std::fprintf(stderr, "can't make the test pattern\n"), 1;
     const vr::SharedTextureHandle_t plain = Import(client);
     if (!plain) return std::fprintf(stderr, "SteamVR can't import the test pattern\n"), 1;
 
     vr::VROverlayHandle_t ov;
-    if (vr::VROverlay()->CreateOverlay("frametop.handtest", "Hand cutout test", &ov) != vr::VROverlayError_None)
+    if (vr::VROverlay()->CreateOverlay(stereoPreview ? "frametop.stereo-smoke" : "frametop.handtest",
+                                      stereoPreview ? "Frametop stereo smoke test" : "Hand cutout test",
+                                      &ov) != vr::VROverlayError_None)
         return std::fprintf(stderr, "can't create the overlay (already running?)\n"), 1;
     vr::VROverlay()->SetOverlayWidthInMeters(ov, float(width));
 
@@ -282,6 +328,9 @@ int main(int argc, char **argv) {
     vr::VROverlay()->SetOverlayTexture(ov, &tex);
     vr::VROverlay()->ShowOverlay(ov);
     std::printf("test panel %.2f m wide, %.2f m ahead; Ctrl+C to stop\n", width, distance);
+    if (stereoPreview)
+        std::printf("STEREO SMOKE: %.4f strength, %.2f convergence, swap %d; %.0f sec maximum; normal desktop untouched\n",
+                    stereoStrength, stereoConvergence, stereoSwap ? 1 : 0, seconds);
 
     handcut::Hands hands;
     bool cutting = false;
@@ -302,7 +351,8 @@ int main(int argc, char **argv) {
             handcut::EyePositions(head, eyes);
             cut = handcut::Project(panel, hands.capsules(), eyes, eyes2d);
         }
-        const handcut::Output *out = cut ? renderer.Composite(0, bo, 1, client, eyes2d) : nullptr;
+        const handcut::Output *out = (cut || stereoPreview)
+            ? renderer.Composite(0, bo, 1, client, eyes2d, stereo) : nullptr;
         if (out) {
             auto it = imports.find(out);
             if (it == imports.end()) {
