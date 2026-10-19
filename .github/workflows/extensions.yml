@@ -12,6 +12,10 @@ on:
       - 'screens/stereo-preview.h'
       - 'screens/handcut.cpp'
       - 'screens/handtest.cpp'
+      - 'screens/stereo-image.h'
+      - 'screens/test/capture-stereo.py'
+      - 'screens/tests/stereo-image-test.cpp'
+      - 'screens/tests/test_capture_stereo.py'
       - 'screens/handcut.h'
       - 'screens/tests/extension-motion-test.cpp'
       - 'screens/tests/stereo-preview-test.cpp'
@@ -44,3 +48,9 @@ jobs:
         run: |
           g++ -std=c++17 -Wall -Wextra -Werror screens/tests/stereo-preview-test.cpp -o /tmp/ft-stereo-preview-test
           /tmp/ft-stereo-preview-test
+      - name: Stereo image and snapshot capture parser
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror screens/tests/stereo-image-test.cpp -o /tmp/ft-stereo-image-test
+          /tmp/ft-stereo-image-test
+          python3 -m py_compile screens/test/capture-stereo.py
+          python3 screens/tests/test_capture_stereo.py
