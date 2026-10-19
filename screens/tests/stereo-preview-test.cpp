@@ -6,6 +6,7 @@ int main() {
     using namespace ft_stereo;
     Preview off{};
     assert(!enabled(off));
+    assert(enabled(Preview{0, 0.5f, false, true}));  // flat comparison still draws calibration geometry
     assert(valid(0, 0.5, 0));
     assert(valid(kMaxStrength, 1, 1));
     assert(!valid(kMaxStrength + 0.001, 0.5, 0));
