@@ -3,7 +3,8 @@
 // in front of it, each eye sees through it, like ft-screens' screens with cutouts.
 //
 //   ft-handtest [--distance m] [--width m] [--seconds s]
-//   ft-handtest --stereo-preview [--stereo-strength 0.003] [--seconds 20]
+//   ft-handtest --stereo-preview [--stereo-strength 0.006] [--seconds 20]
+//   ft-handtest --stereo-preview --stereo-luminance  # old fake-depth checker
 // The preview draws ONE temporary overlay; it never restarts the desktop.
 //
 // The hand-cutout test needs ft-hands; --stereo-preview does NOT need tracking.
@@ -54,9 +55,11 @@ vr::SharedTextureHandle_t Import(const ft_dmabuf &b) {
     return h;
 }
 
-// The stand-in "client" buffer. The optional high-contrast calibration grid
-// gives the stereo shader distinguishable brightness-based pseudo-depth planes.
-bool TestPattern(int drm, int w, int h, gbm_bo **out, ft_dmabuf *b, bool stereoCalibration = false) {
+// Stand-in client buffer, also used by the isolated stereo calibration target.
+// In calibration mode the GRID itself stays at the panel's zero-disparity plane;
+// the GPU overlays independently shifted near/far objects.
+bool TestPattern(int drm, int w, int h, gbm_bo **out, ft_dmabuf *b,
+                 bool stereoCalibration = false, bool luminanceChecker = false) {
     gbm_device *gbm = gbm_create_device(drm);
     gbm_bo *bo = gbm_bo_create(gbm, w, h, GBM_FORMAT_ABGR8888, GBM_BO_USE_LINEAR | GBM_BO_USE_RENDERING);
     if (!bo) return false;
@@ -68,7 +71,13 @@ bool TestPattern(int drm, int w, int h, gbm_bo **out, ft_dmabuf *b, bool stereoC
         for (int x = 0; x < w; ++x) {
             uint8_t *p = px + size_t(y) * stride + size_t(x) * 4;
             if (stereoCalibration) {
-                // Alternating near/far luminance with thin mid-gray reference lines.
+                // Unshifted background grid. Explicit near/far objects are
+                // rendered analytically by the stereo shader.
+                const bool line = x % 100 < 2 || y % 100 < 2;
+                const uint8_t gray = line ? 92 : 36;
+                p[0] = gray, p[1] = gray, p[2] = gray, p[3] = 255;
+            } else if (luminanceChecker) {
+                // Original fake-depth checker for comparing the two modes.
                 const bool line = x % 200 < 3 || y % 180 < 3;
                 const uint8_t gray = line ? 128 : (((x / 200 + y / 180) & 1) ? 42 : 228);
                 p[0] = gray, p[1] = gray, p[2] = gray, p[3] = 255;
@@ -211,14 +220,15 @@ int RunProbe(vr::VROverlayHandle_t ov, const handcut::Panel &panel, handcut::Ren
 
 int main(int argc, char **argv) {
     double distance = 0.8, width = 1.0, seconds = 0, leadMs = -1, dotMm = 3;
-    double stereoStrength = 0.003, stereoConvergence = 0.5;
-    bool probe = false, stereoPreview = false, stereoSwap = false;
+    double stereoStrength = 0.006, stereoConvergence = 0.5;
+    bool probe = false, stereoPreview = false, stereoSwap = false, stereoLuminance = false;
     std::string logPath = "/tmp/handprobe-" + std::to_string(time(nullptr)) + ".jsonl";
     for (int i = 1; i < argc; ++i) {
         const bool more = i + 1 < argc;
         if (!std::strcmp(argv[i], "--probe")) probe = true;
         else if (!std::strcmp(argv[i], "--stereo-preview")) stereoPreview = true;
         else if (!std::strcmp(argv[i], "--stereo-swap")) stereoPreview = stereoSwap = true;
+        else if (!std::strcmp(argv[i], "--stereo-luminance")) stereoPreview = stereoLuminance = true;
         else if (!std::strcmp(argv[i], "--stereo-strength") && more) {
             stereoPreview = true;
             char *end = nullptr;
@@ -242,7 +252,8 @@ int main(int argc, char **argv) {
         else return std::fprintf(stderr, "usage: ft-handtest [--distance m] [--width m] [--seconds s] "
                                          "[--probe [--lead ms] [--dot-mm mm] [--log FILE]] "
                                          "[--stereo-preview [--stereo-strength 0..0.03] "
-                                         "[--stereo-convergence 0..1] [--stereo-swap]]\n"), 2;
+                                         "[--stereo-convergence 0..1] [--stereo-swap] "
+                                         "[--stereo-luminance]]\n"), 2;
     }
     // A timed overlay on a running SteamVR instance is safer than replacing a
     // desktop compositor. Even a lost terminal cannot leave this test forever.
@@ -255,7 +266,7 @@ int main(int argc, char **argv) {
         if (seconds == 0) seconds = 20;   // auto-clean up without Ctrl+C
     }
     const ft_stereo::Preview stereo = stereoPreview
-        ? ft_stereo::Preview{float(stereoStrength), float(stereoConvergence), stereoSwap}
+        ? ft_stereo::Preview{float(stereoStrength), float(stereoConvergence), stereoSwap, !stereoLuminance}
         : ft_stereo::Preview{};
     signal(SIGINT, Stop);
     signal(SIGTERM, Stop);
@@ -286,7 +297,8 @@ int main(int argc, char **argv) {
     const int drm = open("/dev/dri/renderD128", O_RDWR | O_CLOEXEC);
     gbm_bo *bo = nullptr;
     ft_dmabuf client;
-    if (drm < 0 || !TestPattern(drm, W, H, &bo, &client, stereoPreview)) return std::fprintf(stderr, "can't make the test pattern\n"), 1;
+    if (drm < 0 || !TestPattern(drm, W, H, &bo, &client,
+                                stereoPreview && !stereoLuminance, stereoPreview && stereoLuminance)) return std::fprintf(stderr, "can't make the test pattern\n"), 1;
     const vr::SharedTextureHandle_t plain = Import(client);
     if (!plain) return std::fprintf(stderr, "SteamVR can't import the test pattern\n"), 1;
 
@@ -329,8 +341,11 @@ int main(int argc, char **argv) {
     vr::VROverlay()->ShowOverlay(ov);
     std::printf("test panel %.2f m wide, %.2f m ahead; Ctrl+C to stop\n", width, distance);
     if (stereoPreview)
-        std::printf("STEREO SMOKE: %.4f strength, %.2f convergence, swap %d; %.0f sec maximum; normal desktop untouched\n",
-                    stereoStrength, stereoConvergence, stereoSwap ? 1 : 0, seconds);
+        std::printf("STEREO SMOKE %s: %.4f strength, %.2f convergence, swap %d; %.0f sec maximum\n"
+                    "calibrated mode: ORANGE square should be in front of the grid, CYAN circle behind it;\n"
+                    "cover each eye: LEFT sees red marker, RIGHT sees blue marker.\n",
+                    stereoLuminance ? "luminance checker" : "calibrated near/far", stereoStrength,
+                    stereoConvergence, stereoSwap ? 1 : 0, seconds);
 
     handcut::Hands hands;
     bool cutting = false;
