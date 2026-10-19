@@ -159,6 +159,8 @@ public:
     // How long the last Composite took on the CPU, ms.
     double lastMs() const { return lastMs_; }
     CutStats TakeStats() { CutStats s = stats_; stats_ = {}; return s; }
+    // A failed diagnostic stereo shader must not disable ordinary hand cutouts.
+    bool SupportsStereo() const { return ready_ && stereoProg_ != 0; }
 
 private:
     unsigned Texture(const void *key, const ft_dmabuf &src);
