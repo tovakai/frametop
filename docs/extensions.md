@@ -139,6 +139,11 @@ a corner, and the RIGHT eye a **blue** marker in the same place. Incorrect
 eye colors mean SBS eye order needs investigation; reversed perceived depth
 with correct eye colors can be checked with `--stereo-swap`.
 
+To compare against the **same calibration image with no depth**, rerun with
+`--stereo-strength 0`. The orange square and cyan circle will remain in
+the same places, but the disparity is zero, so both should align with the
+grid's focal plane. This makes a reproducible A/B test.
+
 For comparison with the original luminance-as-fake-depth checker, use
 `--stereo-luminance` with `--stereo-preview`. That mode is less reliable
 for visually judging stereoscopy and does not establish a foreground object.
