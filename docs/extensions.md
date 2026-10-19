@@ -156,6 +156,77 @@ output without restarting or reinstalling the desktop.
 This tests the GPU stereo composition, **not** extension API commands or AI
 depth inference. Only after it passes should we consider a per-screen test.
 
+## Stage 2: a real desktop screenshot in the isolated VR overlay
+
+The timed standalone overlay can now sample pixels from a **one-shot PPM
+screenshot** rather than a synthetic grid. The desktop continues using its
+normal Frametop compositor. This is **not** live capture, interactive remote
+control, permissionless screen recording or machine-learned depth inference.
+The screenshot is never uploaded or transmitted by these scripts.
+
+First pull and rebuild the experimental branch **without using install.sh or
+changing the desktop launcher**:
+
+```sh
+cd ~/frametop-stereo-test
+git pull --ff-only
+./screens/build.sh
+```
+
+While the normal Frametop desktop is running, capture its **first** output
+with the KWin screenshot API (a permission-controlled, one-shot operation):
+
+```sh
+python3 screens/test/capture-stereo.py \
+  --screen 1 --output /home/steamos/Pictures/frametop-stereo-screen1.ppm
+```
+
+The helper discovers the nested Plasma D-Bus session of the current user,
+requests a screenshot through KWin, converts BGRA/RGBA pixels to binary P6,
+and constrains the image to at most 2048x1152. It **never** enables
+`KWIN_SCREENSHOT_NO_PERMISSION_CHECKS` or changes KWin's permissions.
+If screenshot access is denied, use the **existing** user-facing Spectacle
+screenshot tool inside Frametop, save a PNG to
+`/home/steamos/Pictures/framedepth.png`, then convert the saved PNG:
+
+```sh
+./scripts/frame.sh -C screens \
+  "magick /home/steamos/Pictures/framedepth.png -resize '2048x1152>' -alpha off -depth 8 ppm:/home/steamos/Pictures/frametop-stereo-screen1.ppm"
+```
+
+This uses the ImageMagick already available in Frametop's build container.
+Use a real non-secret screenshot; it remains an ordinary file in your home
+folder. The loader only accepts binary **P6 8-bit RGB** PPM, not P3, PNG
+or JPEG; unsupported input fails before the OpenVR overlay is created.
+
+Then run the timed stereo snapshot independently of the working desktop:
+
+```sh
+./scripts/frame.sh -C screens \
+  './build/ft-handtest --ppm /home/steamos/Pictures/frametop-stereo-screen1.ppm --stereo-strength 0.006 --seconds 20'
+```
+
+The photo/screenshot uses the **original luminance-as-fake-depth shader**,
+not the independent calibrated orange/cyan geometry. Expect some warping
+near text and icons, and possibly little convincing actual depth: the point
+is to validate importing *real application pixels* into GPU/SBS/SteamVR
+without intercepting your desktop. For a direct flat comparison, run the same
+command with `--stereo-strength 0`. To stop early, press Ctrl+C.
+If uncomfortable or wrong-eye, stop rather than raising the strength.
+
+Read-only, offline regression tests:
+
+```sh
+g++ -std=c++17 -Wall -Wextra -Werror \
+  screens/tests/stereo-image-test.cpp -o /tmp/ft-stereo-image-test
+/tmp/ft-stereo-image-test
+python3 screens/tests/test_capture_stereo.py
+```
+
+The screenshot helper and new `--ppm` path need live Steam Frame
+testing. Working synthetic calibration proves the stereo overlay, **not**
+that KWin will authorize a snapshot or that source-image depth looks good.
+
 ## Python client
 
 Only the standard library is required. Use it as a module or a command:
