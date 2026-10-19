@@ -9,7 +9,11 @@ on:
       - 'screens/vr.cpp'
       - 'justfile'
       - 'screens/extension-motion.h'
+      - 'screens/stereo-preview.h'
+      - 'screens/handcut.cpp'
+      - 'screens/handcut.h'
       - 'screens/tests/extension-motion-test.cpp'
+      - 'screens/tests/stereo-preview-test.cpp'
       - 'extensions/**'
       - 'docs/extensions.md'
       - 'docs/upgrade-from-upstream.md'
@@ -35,3 +39,7 @@ jobs:
         run: |
           g++ -std=c++17 -Wall -Wextra -Werror screens/tests/extension-motion-test.cpp -o /tmp/ft-ext-motion-test
           /tmp/ft-ext-motion-test
+      - name: Stereo preview validation
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror screens/tests/stereo-preview-test.cpp -o /tmp/ft-stereo-preview-test
+          /tmp/ft-stereo-preview-test
