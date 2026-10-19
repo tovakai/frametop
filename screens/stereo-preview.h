@@ -24,7 +24,7 @@ inline bool valid(double strength, double convergence, int swap) {
            convergence >= 0.0 && convergence <= 1.0 && (swap == 0 || swap == 1);
 }
 
-inline bool enabled(const Preview &p) { return p.strength > 0.0f; }
+inline bool enabled(const Preview &p) { return p.calibration || p.strength > 0.0f; }
 
 inline bool same(const Preview &a, const Preview &b) {
     return a.strength == b.strength && a.convergence == b.convergence &&
