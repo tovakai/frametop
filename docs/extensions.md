@@ -18,7 +18,7 @@ ext api
   ok 1
 
 ext caps
-  ok screen.status screen.opacity screen.move
+  ok screen.status screen.opacity screen.move screen.stereo.preview
 ```
 
 Version 1 adds commands without changing existing `place`, `get`, `pin`,
@@ -63,6 +63,43 @@ ext move N X Y Z YAW PITCH ROLL MILLISECONDS
 - These are **runtime overrides**. They do not silently modify layout/profile
   files, and they reset when `ft-screens` restarts. A profile extension must
   implement its own persistence and replay.
+
+## Experimental stereo preview (FrameDepth pipeline check)
+
+The optional `screen.stereo.preview` capability is an **opt-in diagnostic**, not
+depth estimation or a production stereo API. It synthesizes fake depth from the
+client image's luminance, then samples two horizontally shifted eye views with
+the existing GPU/DMA-BUF cutout renderer. The same renderer preserves tracked
+hand cutouts and has only one owner of the overlay texture and OpenVR SBS flags.
+It applies to **local desktop screens only**, not float or remote panels.
+
+```text
+ext stereo-preview N state
+  ok on|off strength STRENGTH convergence CONVERGENCE swap 0|1 mode luminance
+
+ext stereo-preview N on STRENGTH CONVERGENCE SWAP
+  ok
+
+ext stereo-preview N off
+  ok
+```
+
+- `STRENGTH`: 0..0.03 in normalized source-image width, with 0 disabling it.
+  Start with 0.006. The renderer applies half the signed shift in each eye.
+- `CONVERGENCE`: 0..1 image luminance interpreted as zero-disparity plane.
+- `SWAP`: 0 or 1, reverses which eye receives which horizontal displacement.
+- No persistent settings: disabling or restarting restores plain 2D.
+- A client buffer remains owned by Frametop; the compositor imports it and
+  hands the GPU-finished SBS texture to SteamVR. The extension gets **no raw
+  image access** through this command and cannot inject a depth map yet.
+- The cutout renderer is initialized lazily. If initialization or import fails,
+  the ordinary 2D texture remains or is restored. The first GPU fence can
+  block briefly, as with hand cutouts today.
+
+This first slice is a **live stereo-composition integration test** for
+independently installed extensions. A future depth worker needs a separate,
+versioned capability for safe, synchronized depth-map transport; this
+capability must not be renamed to imply arbitrary depth maps are supported.
 
 ## Python client
 
