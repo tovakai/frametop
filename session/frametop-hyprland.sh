@@ -18,7 +18,7 @@ if ! [[ $count =~ ^[1-9][0-9]*$ ]] || (( count > 24 )); then
   exit 2
 fi
 
-config=${FT_HYPRLAND_CONFIG:-$here/hyprland-minimal.lua}
+config=${FT_HYPRLAND_CONFIG:-$here/hyprland-frame.lua}
 if [ ! -f "$config" ]; then
   echo "frametop: Hyprland configuration not found: $config" >&2
   exit 2
@@ -42,7 +42,8 @@ mkdir -p "$HOME/.config/frametop/hyprland" "$HOME/.local/state/frametop/hyprland
 # Disabling Hyprland's systemd/DBus activation-environment imports prevents the
 # nested compositor from redirecting SteamOS's own services into this session.
 # dbus-run-session runs *inside* the container with the isolated session's env.
-# We intentionally don't start Quickshell, portals, hypridle or other agents yet.
+# Quickshell is started by the Frame config when the laptop's end-4 tree is present.
+# It is a client: its exit does not stop Hyprland. hypridle and suspend stay off.
 echo "frametop: starting experimental nested Hyprland ($count panel(s))" >&2
 "$here/../scripts/in-box" env -u HYPRLAND_INSTANCE_SIGNATURE \
   LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" \
@@ -58,4 +59,6 @@ echo "frametop: starting experimental nested Hyprland ($count panel(s))" >&2
   HYPRLAND_NO_SD_TARGET=1 \
   FT_SCREEN_COUNT="$count" \
   FT_HYPRLAND_STARTUP="$here/hyprland-on-start.sh" \
+  FT_FRAME_SESSION="$here" \
+  FT_USER_CONFIG_HOME="$HOME/.config" \
   dbus-run-session Hyprland -c "$config"

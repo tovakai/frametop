@@ -132,6 +132,7 @@ if [ "${1:-}" != --inner ]; then
     trap stop_hyprland_screens EXIT
     for _ in $(seq 100); do [ -S "$XDG_RUNTIME_DIR/$socket" ] && break; sleep 0.2; done
     [ -S "$XDG_RUNTIME_DIR/$socket" ] || { echo "ft-screens didn't start (see /tmp/frametop-hyprland-screens.log)" >&2; exit 1; }
+    "$here/hyprland-key-forward.py" "$FT_HYPRLAND_CONTROL" >/tmp/frametop-hyprland-keys.log 2>&1 &
     WAYLAND_DISPLAY=$XDG_RUNTIME_DIR/$socket "$0" --inner
     exit
   fi

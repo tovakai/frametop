@@ -60,7 +60,7 @@ frametop_cmdline_is_hyprland_screens() {
 # Never uses pkill -x ft-screens.
 frametop_stop_hyprland_session() {
   local root=$1 socket=$2 wrapper=${3:-} pid cmd
-  local config=$root/session/hyprland-minimal.lua
+  local session_dir=$root/session/
   for pid in /proc/[0-9]*; do
     pid=${pid#/proc/}
     [[ $pid =~ ^[0-9]+$ ]] || continue
@@ -68,7 +68,8 @@ frametop_stop_hyprland_session() {
     cmd=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)
     [ -n "$cmd" ] || continue
     if frametop_cmdline_is_hyprland_screens "$cmd" "$socket" ||
-       [[ $cmd == *"Hyprland -c ${config}"* ]]; then
+       [[ $cmd == *"Hyprland -c ${session_dir}"* ]] ||
+       [[ $cmd == *"hyprland-key-forward.py"* ]]; then
       kill "$pid" 2>/dev/null || true
     fi
   done

@@ -1,0 +1,4 @@
+-- Frame stand-in for ~/.config/hypr/custom/execs.lua.
+-- The laptop file starts login apps (Obsidian, Firefox). Those are not launched
+-- into the headset automatically. Super+E, Super+W, Super+Return and the
+-- controller chords still open the file manager, browser, and terminal.

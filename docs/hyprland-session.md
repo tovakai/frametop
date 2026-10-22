@@ -87,15 +87,21 @@ makes that path too long and Hyprland disables IPC.
 or activating/stopping SteamOS user graphical session targets. The current
 compositor runs inside the Fedora dev container, not directly on the host.
 
-The shipped **Lua** file `session/hyprland-minimal.lua` targets Hyprland
-0.56.2, using its `hl.*` configuration API. Its startup event launches
-`session/hyprland-on-start.sh` to add only the extra Wayland-backed outputs
-via `hyprctl output create wayland` and start one terminal if installed.
-`SUPER+SHIFT+E` exits the nested compositor. No wallpaper daemon, portal,
-hypridle, system agents, laptop shortcuts or Quickshell are started.
+`session/hyprland-frame.lua` is the config the experimental session loads.
+When `~/.config/hypr/hyprland.lua` is present it runs that file, so the
+laptop's keybinds stay in force. `session/frame-hypr/` is ahead of it on
+`package.path` and replaces startup only: Quickshell via
+`session/frame-quickshell.sh`, and no hypridle, brightness agent, or login
+autostart. A missing `qs` or a missing `~/.config/quickshell/ii` exits that
+helper with status 0; Hyprland keeps running. Without the laptop config,
+the same file falls back to one terminal and `SUPER+Return` /
+`SUPER+SHIFT+E`. `session/hyprland-minimal.lua` remains that fallback's
+reference. `FT_HYPRLAND_CONFIG` still selects another file.
 
-`FT_HYPRLAND_CONFIG=/absolute/path/to/config.lua` overrides the minimal
-config, provided the container can see that same absolute path.
+The installed input relay sends keys to `@ft_screens`. The experimental
+compositor listens on `@ft_hyprland`, and `session/hyprland-key-forward.py`
+forwards key, click, and chord messages while `@ft_screens` is free. It
+does not start when Plasma's compositor already holds that name.
 
 ## Remaining gates
 
@@ -108,12 +114,41 @@ config, provided the container can see that same absolute path.
       and two 1280×720 outputs both map `aquamarine - WAYLAND-N` toplevels
       and report buffer commits on the control socket. This does not import
       those buffers into SteamVR.
-- [ ] SteamVR `ImportDmabuf`, panel presentation, frame pacing, and input.
-- [ ] Input: controller click, keyboard focus, mouse and scroll.
+- [x] SteamVR `ImportDmabuf` and one 1280×720 panel. The first live session
+      mapped `aquamarine - WAYLAND-1`, logged modifiers SteamVR can import,
+      and did not log `ImportDmabuf failed`. Frame pacing followed the
+      existing in-view rate until the panel was focused.
+- [x] Controller click, keyboard focus, and scroll on that one-terminal
+      session. Keyboard shortcuts needed the `@ft_screens` forwarder; the
+      session starts it now. `SUPER+Return` and `SUPER+SHIFT+E` are Hyprland
+      binds and do nothing until the key arrives at this compositor.
 - [ ] Additional outputs and correct output-to-panel mapping. `ft-screens`
       currently assigns indices by initial creation order and reads
       KWin-specific spare output titles; removal/recreation isn't safe yet.
 - [ ] Pause/resume, clean shutdown, Plasma fallback and frame pacing.
 - [ ] Hyprland adapters for KWin-specific floating windows, screen management,
       remote desktop and automatic VR keyboard.
-- [ ] Frame-specific end-4/Quickshell profile.
+- [ ] Frame-specific end-4/Quickshell profile. The session launches the
+      laptop's existing `~/.config/quickshell/ii` when `qs` and that tree
+      are on the machine. It does not copy or edit that tree. Battery,
+      brightness, and suspend modules are still in the shell; a module
+      error stays inside the Quickshell process. The right-controller
+      profile is `session/frame-controller-profile.json`. It is not merged
+      into `~/.config/frametop-input.json`, and the installed input relay
+      is not restarted by these changes. R1, R3, and stick scroll stay
+      SteamVR's click and scroll. Trigger is a modifier only after that
+      profile is active: face buttons change workspace or move the focused
+      window, and trigger plus a face button or R1 launches an app or
+      sends one `closewindow`.
+
+## Controller chords
+
+`input/controller_chords.py` decides a press. The trigger never launches
+anything. Releasing the trigger and the other button in either order does
+not launch a second action. Trigger+R1 does not bind the bumper, so the
+normal left click remains; ft-screens swallows that click only while
+`chord-click 1` is set and asks the relay to run the close action once.
+A VR game, pause, or typing leaving the desktop clears the modifier.
+Applying the profile and restarting the relay needs approval. Set
+`FT_CONTROL_SOCKET=ft_hyprland` on that relay so chord messages reach this
+compositor, or leave the forwarder in the session path.

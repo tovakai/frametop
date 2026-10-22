@@ -1,0 +1,21 @@
+{
+  "note": "Experimental and inactive. Merge controller_chords into the headset rules only after the input relay restart is approved. Remove that object to revert. Do not set controller_in_games for these buttons.",
+  "controller_in_games": false,
+  "controller_chords": {
+    "modifier": "right/trigger",
+    "swallow_click": "right/bumper",
+    "normal": {
+      "right/x": "command:frame-desktop-action workspace-prev",
+      "right/b": "command:frame-desktop-action workspace-next",
+      "right/a": "command:frame-desktop-action window-next",
+      "right/y": "command:frame-desktop-action window-prev"
+    },
+    "modified": {
+      "right/a": "command:frame-desktop-action files",
+      "right/b": "command:frame-desktop-action browser",
+      "right/x": "command:frame-desktop-action terminal",
+      "right/y": "command:frame-desktop-action launcher",
+      "right/bumper": "command:frame-desktop-action close"
+    }
+  }
+}
