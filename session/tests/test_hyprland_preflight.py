@@ -138,7 +138,7 @@ class HyprlandPreflightTests(unittest.TestCase):
 
     def test_protocol_checker_accepts_matching_globals(self):
         script = ROOT / "session" / "hyprland-protocol-check.py"
-        sample = "\\n".join([
+        sample = "\n".join([
             "interface: 'wl_compositor', version: 6, name: 1",
             "interface: 'wl_seat', version: 9, name: 2",
             "interface: 'wl_shm', version: 1, name: 3",
@@ -154,7 +154,7 @@ class HyprlandPreflightTests(unittest.TestCase):
 
     def test_protocol_checker_rejects_old_xdg_wm_base(self):
         script = ROOT / "session" / "hyprland-protocol-check.py"
-        sample = "\\n".join([
+        sample = "\n".join([
             "interface: 'wl_compositor', version: 6, name: 1",
             "interface: 'wl_seat', version: 9, name: 2",
             "interface: 'wl_shm', version: 1, name: 3",
