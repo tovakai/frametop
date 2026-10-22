@@ -1,5 +1,7 @@
 # Frametop settings, read by session/frametop-session.sh on the Frame.
 # Installed to ~/.config/frametop.conf. Environment variables with an FT_ prefix override these.
+DESKTOP=plasma     # plasma (default) | hyprland (EXPERIMENTAL; screens backend only)
+                   # Override for one launch with FT_DESKTOP_SESSION=hyprland.
 BACKEND=screens    # screens: ft-screens, each screen its own resolution and size (set in Frametop Display Settings,
                    #   saved in ~/.config/frametop-layout.json) | gamescope: the old path, settings below
 SCREENS=2          # gamescope: number of desktop screens (VR panels)

@@ -1,6 +1,6 @@
 #!/bin/bash
-# Runs on the Frame host (not in the container). Starts a Plasma desktop with several
-# screens, each its own SteamVR panel. Modeled on /usr/bin/steamos-nested-desktop, which
+# Runs on the Frame host (not in the container). Starts a nested desktop with several
+# screens, each its own SteamVR panel. Plasma is the default; Hyprland is experimental. Modeled on /usr/bin/steamos-nested-desktop, which
 # does the same with one screen in gamescope.
 #
 # Backends (BACKEND in ~/.config/frametop.conf):
@@ -12,7 +12,7 @@
 #
 # Settings come from ~/.config/frametop.conf (see frametop.conf.example) and, for the
 # screens backend, ~/.config/frametop-layout.json (Frametop Display Settings writes both).
-# FT_BACKEND, FT_SCREENS, FT_WIDTH, FT_HEIGHT, and FT_PHYS_WIDTH override them.
+# FT_BACKEND, FT_DESKTOP_SESSION, FT_SCREENS, FT_WIDTH, FT_HEIGHT, and FT_PHYS_WIDTH override them.
 set -eu
 
 here=$(dirname "$(readlink -f "$0")")
@@ -34,10 +34,19 @@ for var in $(compgen -e); do
 done
 
 conf=$HOME/.config/frametop.conf
-BACKEND=screens SCREENS=2 WIDTH=1920 HEIGHT=1080 PHYS_WIDTH=1.6 REMOTE=0 FLOAT_SLOTS=8 FLOAT_MARGIN=300
+BACKEND=screens DESKTOP=plasma SCREENS=2 WIDTH=1920 HEIGHT=1080 PHYS_WIDTH=1.6 REMOTE=0 FLOAT_SLOTS=8 FLOAT_MARGIN=300
 # shellcheck disable=SC1090
 [ -f "$conf" ] && . "$conf"
 backend=${FT_BACKEND:-$BACKEND}
+desktop=${FT_DESKTOP_SESSION:-$DESKTOP}
+case $desktop in
+  plasma | hyprland) ;;
+  *) echo "frametop: unknown desktop session: $desktop (expected plasma or hyprland)" >&2; exit 2 ;;
+esac
+if [ "$desktop" = hyprland ] && [ "$backend" != screens ]; then
+  echo "frametop: experimental Hyprland session requires BACKEND=screens" >&2
+  exit 2
+fi
 screens=${FT_SCREENS:-$SCREENS}
 width=${FT_WIDTH:-$WIDTH}
 height=${FT_HEIGHT:-$HEIGHT}
@@ -50,6 +59,9 @@ float_slots=${FT_FLOAT_SLOTS:-$FLOAT_SLOTS}
 [[ $float_slots =~ ^[0-9]+$ ]] || float_slots=8
 [ "$float_slots" -le 16 ] || float_slots=16
 [ "$backend" = screens ] || float_slots=0
+# Spare outputs and floating windows currently use KWin scripting. Keep Hyprland
+# experimental sessions on ordinary screens until a compositor adapter exists.
+[ "$desktop" = plasma ] || float_slots=0
 if [ "$backend" = gamescope ] && [ $((width * height)) -gt $((1920 * 1080)) ]; then
   # gamescope's VR backend aborts above 1920x1080 worth of pixels (its upload buffer;
   # see docs/design.md). Shrink a bigger size to fit, keeping its shape.
@@ -84,7 +96,9 @@ if [ "${1:-}" != --inner ]; then
   # from a profile's launcher entry, or the default profile), which also opens its apps, or
   # else in the saved layout (skipped when auto-arrange is off). docs/profiles.md.
   # The log starts fresh here; ft-screens appends its later ft-layout runs to it.
-  setsid "$here/../layout/ft-layout" start --wait 90 > "$XDG_RUNTIME_DIR/frametop-layout.log" 2>&1 < /dev/null &
+  if [ "$desktop" = plasma ]; then
+    setsid "$here/../layout/ft-layout" start --wait 90 > "$XDG_RUNTIME_DIR/frametop-layout.log" 2>&1 < /dev/null &
+  fi
 
   if [ "$backend" = gamescope ]; then
     export ENABLE_GAMESCOPE_WSI=1 GAMESCOPE_MANGOAPP_SOCKET_DISABLE=1
@@ -115,7 +129,14 @@ if [ "${1:-}" != --inner ]; then
   exit
 fi
 
-# Inside the host compositor (ft-screens or gamescope) from here on. The desktop isn't a
+# Inside the host compositor (ft-screens or gamescope) from here on.
+# Hyprland has its own isolated runtime and must not touch Plasma's config,
+# KWin's input method, or KWin-specific startup services.
+if [ "$desktop" = hyprland ]; then
+  exec "$here/frametop-hyprland.sh"
+fi
+
+# The Plasma desktop isn't a
 # gamescope client with ft-screens, so the gamescope session's Vulkan layer stays off, and
 # the gamescope session's portal config isn't Plasma's.
 [ "$backend" = gamescope ] || unset ENABLE_GAMESCOPE_WSI

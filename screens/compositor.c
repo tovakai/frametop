@@ -975,7 +975,10 @@ int main(int argc, char **argv) {
     if (!setup_dmabuf(&s)) return 1;
     wlr_data_device_manager_create(s.display);
 
-    s.xdg_shell = wlr_xdg_shell_create(s.display, 3);
+    // Aquamarine 0.15.1 (Hyprland's nested Wayland backend) binds xdg_wm_base v6.
+    // wlroots 0.20 implements the protocol; v3 made that client disconnect on bind.
+    // Keep testing KWin and input behavior after this version upgrade.
+    s.xdg_shell = wlr_xdg_shell_create(s.display, 6);
     s.new_toplevel.notify = new_toplevel;
     wl_signal_add(&s.xdg_shell->events.new_toplevel, &s.new_toplevel);
     s.decoration = wlr_xdg_decoration_manager_v1_create(s.display);
