@@ -87,6 +87,7 @@ class FrameDesktopTests(unittest.TestCase):
         self.assertIn("frame-quickshell.sh", code)
         launcher = (SESSION / "frametop-session.sh").read_text()
         self.assertIn("ft-hyprland-0", launcher)
+        self.assertIn("FT_OVERLAY_PREFIX=frametop.hypr", launcher)
         self.assertIn("Plasma's ft-screens", launcher)
         self.assertIn("keyboard hyprland", (ROOT / "screens" / "compositor.c").read_text())
         guard = (SESSION / "frame-hypr" / "hyprland" / "services" / "create_custom_config.lua").read_text()

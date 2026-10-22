@@ -2192,7 +2192,9 @@ void ft_vr_screen_create(int index, double metres, int count) {
     Screen &s = g_screens[index];
     s.metres = metres;
     char prefix[64], label[64];
-    std::snprintf(prefix, sizeof prefix, "frametop.screen.%d", index + 1);
+    const char *base = std::getenv("FT_OVERLAY_PREFIX");
+    if (!base || !*base) base = "frametop.screen";
+    std::snprintf(prefix, sizeof prefix, "%s.%d", base, index + 1);
     std::snprintf(label, sizeof label, "Screen %d", index + 1);
     if (!MakePanel(s, prefix, label)) return;
     // Until the layout places it: 2 m ahead of the head, in a row, screen 1 on the left.

@@ -129,6 +129,8 @@ if [ "${1:-}" != --inner ]; then
     frametop_hyprland_require_one_panel
     socket=$FT_HYPRLAND_SOCKET
     echo "frametop: experimental Hyprland VR session: 1 panel $FT_HYPRLAND_SCREEN (saved layout is not used)" >&2
+    # Plasma already owns frametop.screen.1. This panel needs its own overlay key.
+    export FT_OVERLAY_PREFIX=frametop.hypr
     "$here/../scripts/in-box" "$here/../screens/build/ft-screens" \
       --socket "$socket" --control "$FT_HYPRLAND_CONTROL" \
       --screen "$FT_HYPRLAND_SCREEN" --spares 0 \
