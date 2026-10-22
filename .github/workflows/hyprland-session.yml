@@ -11,6 +11,7 @@ on:
       - 'session/hyprland-minimal.lua'
       - 'session/hyprland-on-start.sh'
       - 'session/hyprland-smoke.sh'
+      - 'session/hyprland-protocol-check.py'
       - 'session/tests/test_hyprland_preflight.py'
       - 'screens/compositor.c'
       - '.github/workflows/hyprland-session.yml'

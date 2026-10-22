@@ -41,7 +41,10 @@ floating windows, remote desktop and automatic SteamVR keyboard are bypassed.
    isolated Hyprland runtime and auto-exits after 15 seconds. It never
    registers SteamVR panels. The test is still unvalidated on the Frame;
    use SSH to capture its output and check for Wayland bind failures,
-   `screen 1: commit`, and any DMA-BUF errors. To exercise extra
+   `screen 1: commit`, and any DMA-BUF errors. The harness also runs
+   `wayland-info | session/hyprland-protocol-check.py` against the **actual**
+   `ft-screens` socket before starting Hyprland. Protocol version checks are
+   necessary but do not prove protocol behavior or DMA-BUF import. To exercise extra
    outputs without VR, set `FT_SCREEN_COUNT=2`.
 5. Launch the experimental branch only when you're ready to test. Start with
    `FT_DESKTOP_SESSION=hyprland FT_SCREEN_COUNT=1` on a disposable

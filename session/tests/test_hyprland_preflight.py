@@ -136,6 +136,38 @@ class HyprlandPreflightTests(unittest.TestCase):
         self.assertIn("HYPRLAND_NO_SD_TARGET=1", source)
         self.assertIn("timeout --signal=TERM", source)
 
+    def test_protocol_checker_accepts_matching_globals(self):
+        script = ROOT / "session" / "hyprland-protocol-check.py"
+        sample = "\\n".join([
+            "interface: 'wl_compositor', version: 6, name: 1",
+            "interface: 'wl_seat', version: 9, name: 2",
+            "interface: 'wl_shm', version: 1, name: 3",
+            "interface: 'xdg_wm_base', version: 6, name: 4",
+            "interface: 'zwp_linux_dmabuf_v1', version: 4, name: 5",
+        ])
+        result = subprocess.run(
+            ["python3", str(script)], input=sample, text=True,
+            capture_output=True, check=False
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("PASS", result.stdout)
+
+    def test_protocol_checker_rejects_old_xdg_wm_base(self):
+        script = ROOT / "session" / "hyprland-protocol-check.py"
+        sample = "\\n".join([
+            "interface: 'wl_compositor', version: 6, name: 1",
+            "interface: 'wl_seat', version: 9, name: 2",
+            "interface: 'wl_shm', version: 1, name: 3",
+            "interface: 'xdg_wm_base', version: 3, name: 4",
+            "interface: 'zwp_linux_dmabuf_v1', version: 4, name: 5",
+        ])
+        result = subprocess.run(
+            ["python3", str(script)], input=sample, text=True,
+            capture_output=True, check=False
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("TOO OLD xdg_wm_base", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

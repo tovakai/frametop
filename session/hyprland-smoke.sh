@@ -22,6 +22,13 @@ if [ "${1:-}" = --inner ]; then
   fi
   # A fresh directory, config and state: no edits to either host or Frametop
   # profiles. Closing this child makes ft-screens terminate via SIGCHLD.
+  # Check the actual advertised protocols before moving XDG_RUNTIME_DIR.
+  # Aquamarine 0.15.1 binds these exact versions, not lower fallbacks.
+  if ! command -v wayland-info >/dev/null 2>&1; then
+    echo "frametop: wayland-info required for smoke protocol audit" >&2
+    exit 1
+  fi
+  wayland-info | python3 "$here/hyprland-protocol-check.py"
   runtime=$(mktemp -d "${XDG_RUNTIME_DIR:?}/ft-hypr-smoke.XXXXXXXX")
   trap 'rm -rf -- "$runtime"' EXIT
   mkdir -p "$runtime/config" "$runtime/state"
@@ -59,4 +66,4 @@ sock="ft-hypr-smoke-$$"
 ctl="ft_hypr_smoke_$$"
 echo "frametop: isolated --no-vr smoke; socket $sock, control $ctl, $count output(s)" >&2
 "$root/scripts/in-box" "$root/screens/build/ft-screens" --no-vr \
-  --socket "$sock" --control "$ctl" "${screens[@]}" -- "$0" --inner
+  --socket "$sock" --control "$ctl" "${screens[@]}" -- env FT_SCREEN_COUNT="$count" FT_HYPRLAND_SMOKE_SECONDS="$duration" "$0" --inner
