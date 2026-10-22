@@ -35,8 +35,18 @@ frametop_prepend_aquamarine "$here/.."
 # sun_path holds 108 bytes; nesting it under the user runtime directory overflows it and
 # Hyprland turns IPC off, so startup cannot add outputs.
 runtime=$(mktemp -d /tmp/ftH.XXXXXX)
-cleanup() { rm -rf -- "$runtime"; }
+config_home=${FT_USER_CONFIG_HOME:-$(readlink -f "$here/../stage/config")}
+hypr_root=${FT_HYPR_CONFIG_ROOT:-$config_home/hypr}
+if [ -d "$config_home" ]; then config_home=$(readlink -f "$config_home"); fi
+if [ -d "$hypr_root" ]; then hypr_root=$(readlink -f "$hypr_root"); fi
+cleanup() {
+  trap - EXIT INT TERM
+  frametop_hyprland_route_end || true
+  rm -rf -- "$runtime"
+}
 trap cleanup EXIT
+trap 'cleanup; exit 143' INT TERM
+frametop_hyprland_route_begin "$runtime" "$parent_wayland" "$config_home"
 mkdir -p "$HOME/.config/frametop/hyprland" "$HOME/.local/state/frametop/hyprland"
 
 # Disabling Hyprland's systemd/DBus activation-environment imports prevents the
@@ -60,5 +70,6 @@ echo "frametop: starting experimental nested Hyprland ($count panel(s))" >&2
   FT_SCREEN_COUNT="$count" \
   FT_HYPRLAND_STARTUP="$here/hyprland-on-start.sh" \
   FT_FRAME_SESSION="$here" \
-  FT_USER_CONFIG_HOME="$HOME/.config" \
+  FT_USER_CONFIG_HOME="$config_home" \
+  FT_HYPR_CONFIG_ROOT="$hypr_root" \
   dbus-run-session Hyprland -c "$config"

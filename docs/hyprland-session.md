@@ -88,20 +88,41 @@ or activating/stopping SteamOS user graphical session targets. The current
 compositor runs inside the Fedora dev container, not directly on the host.
 
 `session/hyprland-frame.lua` is the config the experimental session loads.
-When `~/.config/hypr/hyprland.lua` is present it runs that file, so the
-laptop's keybinds stay in force. `session/frame-hypr/` is ahead of it on
+`FT_HYPR_CONFIG_ROOT` selects the Hyprland tree (the staged copy under
+`stage/config/hypr`). When that file is absent it falls back to
+`~/.config/hypr/hyprland.lua`, then to one terminal and `SUPER+Return` /
+`SUPER+SHIFT+E`. `session/frame-hypr/` is ahead of the selected tree on
 `package.path` and replaces startup only: Quickshell via
 `session/frame-quickshell.sh`, and no hypridle, brightness agent, or login
-autostart. A missing `qs` or a missing `~/.config/quickshell/ii` exits that
-helper with status 0; Hyprland keeps running. Without the laptop config,
-the same file falls back to one terminal and `SUPER+Return` /
-`SUPER+SHIFT+E`. `session/hyprland-minimal.lua` remains that fallback's
-reference. `FT_HYPRLAND_CONFIG` still selects another file.
+autostart. Quickshell reads `FT_USER_CONFIG_HOME` (the staged
+`stage/config`, whose `quickshell/ii` is the end-4 copy). A missing `qs`
+or a missing shell exits that helper with status 0; Hyprland keeps running.
+`session/hyprland-minimal.lua` remains the fallback's reference.
+`FT_HYPRLAND_CONFIG` still selects another file. The session does not write
+`~/.config/hypr` or `~/.config/quickshell`.
+
+Before Hyprland starts, the session writes
+`$XDG_RUNTIME_DIR/frametop-hyprland.route` with its pid, the exact runtime
+directory, the Wayland socket, the control name `ft_hyprland`, and the
+staged config home. The exit trap and `hyprland-stop.sh` remove that file.
+A dead pid is not a session. `frame-desktop-action.sh` refuses to run when
+the route's runtime has zero or more than one Hyprland signature directory.
+Host commands re-enter the Fedora container through `scripts/in-box` with
+that runtime and signature. The script name is `frame-desktop-action.sh`.
+Launcher IPC is `qs -c ii ipc --any-display call search toggle` so it can
+see the shell when the caller is not the same display connection.
+The Fedora container has Quickshell 0.2.1
+(`dacfa9de829ac7cb173825f593236bf2c21f637e`). The laptop shell was written
+for 0.3.2 (`4f508be`). The 0.2.1 package is what the isolated smoke loaded.
 
 The installed input relay sends keys to `@ft_screens`. The experimental
 compositor listens on `@ft_hyprland`, and `session/hyprland-key-forward.py`
 forwards key, click, and chord messages while `@ft_screens` is free. It
-does not start when Plasma's compositor already holds that name.
+does not start when Plasma's compositor already holds that name. The relay
+in this checkout, once it is the running unit, sends desktop input to the
+route's control socket while the route is live and Plasma's `ft-screens` is
+not running. Chord buttons are requested only in that same case, and only
+while typing is going to the desktop.
 
 ## Remaining gates
 
@@ -128,9 +149,8 @@ does not start when Plasma's compositor already holds that name.
 - [ ] Pause/resume, clean shutdown, Plasma fallback and frame pacing.
 - [ ] Hyprland adapters for KWin-specific floating windows, screen management,
       remote desktop and automatic VR keyboard.
-- [ ] Frame-specific end-4/Quickshell profile. The session launches the
-      laptop's existing `~/.config/quickshell/ii` when `qs` and that tree
-      are on the machine. It does not copy or edit that tree. Battery,
+- [ ] Frame-specific end-4/Quickshell profile loaded in VR. A staged copy
+      lives under `stage/config` and is not the user's `~/.config`. Battery,
       brightness, and suspend modules are still in the shell; a module
       error stays inside the Quickshell process. The right-controller
       profile is `session/frame-controller-profile.json`. It is not merged
@@ -139,7 +159,8 @@ does not start when Plasma's compositor already holds that name.
       SteamVR's click and scroll. Trigger is a modifier only after that
       profile is active: face buttons change workspace or move the focused
       window, and trigger plus a face button or R1 launches an app or
-      sends one `closewindow`.
+      sends one `closewindow`. Trigger+R1 does not become a left click when
+      the trigger is released first.
 
 ## Controller chords
 
@@ -148,7 +169,35 @@ anything. Releasing the trigger and the other button in either order does
 not launch a second action. Trigger+R1 does not bind the bumper, so the
 normal left click remains; ft-screens swallows that click only while
 `chord-click 1` is set and asks the relay to run the close action once.
-A VR game, pause, or typing leaving the desktop clears the modifier.
-Applying the profile and restarting the relay needs approval. Set
-`FT_CONTROL_SOCKET=ft_hyprland` on that relay so chord messages reach this
-compositor, or leave the forwarder in the session path.
+Disarming leaves an already swallowed press swallowed, so releasing the
+trigger before R1 does not deliver the button-up. A VR game, pause, typing
+leaving the desktop, or the route file disappearing clears the modifier and
+drops the buttons from the helper's bind list. They are also left unbound
+while `controller_in_games` is set. The commands are
+`command:frame-desktop-action.sh`, the file on `PATH`.
+
+## Relay deployment (not applied)
+
+The user unit `frametop-input-relay.service` is `Type=notify` with
+`FileDescriptorStorePreserve=yes`. Its `ExecStart` is
+`/usr/bin/python3 /home/steamos/frametop-api/input/input-relay.py`.
+Restarting that unit keeps the virtual mouse and keyboard file descriptors
+in systemd's store, so SteamVR does not have to reopen them.
+
+This checkout's relay is not the running process. Switching it, merging
+`controller_chords` into `~/.config/frametop-input.json`, and restarting
+the unit are separate steps and are not done here. After a switch, chords
+still stay idle until the experimental session writes the route file.
+
+Rollback, after a switch that has been approved and performed:
+
+1. Point `ExecStart` back at `/home/steamos/frametop-api/input/input-relay.py`.
+2. `systemctl --user daemon-reload` and `systemctl --user restart frametop-input-relay`.
+3. Restore `~/.config/frametop-input.json` from the copy made before the merge.
+4. Do not `systemctl --user clean --what=fdstore frametop-input-relay` unless
+   the virtual devices themselves must be recreated. Cleaning the store makes
+   SteamVR lose those devices until SteamVR is restarted.
+
+Stopping the experimental session removes the route file. With the new relay,
+that releases the chord buttons without another edit. The installed relay is
+unchanged by removing the file.

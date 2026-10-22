@@ -38,6 +38,37 @@ FT_HYPRLAND_SOCKET=ft-hyprland-0
 FT_HYPRLAND_CONTROL=ft_hyprland
 FT_HYPRLAND_SCREEN=1280x720@1.0
 
+# Host-side description of the one nested session. The relay and
+# frame-desktop-action.sh read it; they do not search /tmp/ftH.*.
+frametop_hyprland_route_path() {
+  if [ -n "${FT_HYPR_ROUTE:-}" ]; then
+    printf '%s\n' "$FT_HYPR_ROUTE"
+    return
+  fi
+  printf '%s/%s\n' "${XDG_RUNTIME_DIR:?}" frametop-hyprland.route
+}
+
+frametop_hyprland_route_begin() {
+  local runtime=$1 wayland=$2 config_home=$3 path tmp
+  path=$(frametop_hyprland_route_path)
+  umask 077
+  tmp=$(mktemp "${path}.XXXXXX")
+  cat > "$tmp" <<EOF
+pid=$$
+control=$FT_HYPRLAND_CONTROL
+runtime=$runtime
+wayland=$wayland
+config_home=$config_home
+EOF
+  mv -f "$tmp" "$path"
+}
+
+frametop_hyprland_route_end() {
+  local path
+  path=$(frametop_hyprland_route_path)
+  rm -f -- "$path"
+}
+
 frametop_hyprland_require_one_panel() {
   if [ -n "${FT_SCREEN_COUNT:-}" ] && [ "$FT_SCREEN_COUNT" != 1 ]; then
     echo "frametop: experimental Hyprland VR session is one panel; refusing FT_SCREEN_COUNT=$FT_SCREEN_COUNT" >&2
@@ -61,6 +92,7 @@ frametop_cmdline_is_hyprland_screens() {
 frametop_stop_hyprland_session() {
   local root=$1 socket=$2 wrapper=${3:-} pid cmd
   local session_dir=$root/session/
+  frametop_hyprland_route_end || true
   for pid in /proc/[0-9]*; do
     pid=${pid#/proc/}
     [[ $pid =~ ^[0-9]+$ ]] || continue

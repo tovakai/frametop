@@ -37,6 +37,9 @@ test-c:
     gcc -std=c11 -Wall -Wextra -Werror -I. screens/tests/controller-click-test.c \
       -lm -o build/tests/controller-click-test
     build/tests/controller-click-test && echo "screens/tests/controller-click-test.c: ok"
+    gcc -std=c11 -Wall -Wextra -Werror -I. screens/tests/chord-click-test.c \
+      -o build/tests/chord-click-test
+    build/tests/chord-click-test && echo "screens/tests/chord-click-test.c: ok"
     gcc -std=c11 -Wall -Wextra -Werror screens/tests/relay-buttons-test.c \
       -o build/tests/relay-buttons-test
     build/tests/relay-buttons-test && echo "screens/tests/relay-buttons-test.c: ok"

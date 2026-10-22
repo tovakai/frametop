@@ -14,4 +14,7 @@ if [ ! -f "$shell" ]; then
   echo "frametop: Quickshell config $shell is not on this machine; continuing without it" >&2
   exit 0
 fi
+if [ -n "${FT_QS_LOG:-}" ]; then
+  exec qs -c "$cfg" >"$FT_QS_LOG" 2>&1
+fi
 exec qs -c "$cfg"

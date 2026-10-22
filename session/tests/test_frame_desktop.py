@@ -50,26 +50,33 @@ class FrameDesktopTests(unittest.TestCase):
             ["right/trigger", "right/x", "right/b", "right/a", "right/y"],
         )
         self.assertNotIn("right/bumper", chords.bind_names())
-        self.assertEqual(chords.event("right/x", 1), ["command:frame-desktop-action workspace-prev"])
-        self.assertEqual(chords.event("right/b", 1), ["command:frame-desktop-action workspace-next"])
+        script = SESSION / "frame-desktop-action.sh"
+        self.assertTrue(script.is_file() and os.access(script, os.X_OK))
+        self.assertEqual(chords.event("right/x", 1), ["command:frame-desktop-action.sh workspace-prev"])
+        self.assertEqual(chords.event("right/b", 1), ["command:frame-desktop-action.sh workspace-next"])
         chords.event("right/x", 0)
         chords.event("right/b", 0)
-        self.assertEqual(chords.event("right/a", 1), ["command:frame-desktop-action window-next"])
+        self.assertEqual(chords.event("right/a", 1), ["command:frame-desktop-action.sh window-next"])
         chords.event("right/a", 0)
-        self.assertEqual(chords.event("right/y", 1), ["command:frame-desktop-action window-prev"])
+        self.assertEqual(chords.event("right/y", 1), ["command:frame-desktop-action.sh window-prev"])
         chords = controller_chords.ControllerChords(profile["controller_chords"])
         chords.event("right/trigger", 1)
-        self.assertEqual(chords.event("right/a", 1), ["command:frame-desktop-action files"])
+        self.assertEqual(chords.event("right/a", 1), ["command:frame-desktop-action.sh files"])
         chords.event("right/a", 0)
-        self.assertEqual(chords.event("right/b", 1), ["command:frame-desktop-action browser"])
+        self.assertEqual(chords.event("right/b", 1), ["command:frame-desktop-action.sh browser"])
         chords.event("right/b", 0)
-        self.assertEqual(chords.event("right/x", 1), ["command:frame-desktop-action terminal"])
+        self.assertEqual(chords.event("right/x", 1), ["command:frame-desktop-action.sh terminal"])
         chords.event("right/x", 0)
-        self.assertEqual(chords.event("right/y", 1), ["command:frame-desktop-action launcher"])
-        self.assertEqual(chords.click_down(), ["command:frame-desktop-action close"])
+        self.assertEqual(chords.event("right/y", 1), ["command:frame-desktop-action.sh launcher"])
+        self.assertEqual(chords.click_down(), ["command:frame-desktop-action.sh close"])
+        action = (SESSION / "frame-desktop-action.sh").read_text()
+        self.assertNotIn("ftH.*", action)
+        self.assertNotIn("ls -d", action)
+        self.assertIn("scripts/in-box", action)
 
     def test_keyboard_shortcuts_stay_in_the_user_config(self):
         frame = (SESSION / "hyprland-frame.lua").read_text()
+        self.assertIn("FT_HYPR_CONFIG_ROOT", frame)
         self.assertIn('dofile(user_entry)', frame)
         self.assertNotIn("hl.bind(", (SESSION / "frame-hypr" / "hyprland" / "execs.lua").read_text())
         startup = (SESSION / "frame-hypr" / "hyprland" / "execs.lua").read_text()
@@ -94,45 +101,89 @@ class FrameDesktopTests(unittest.TestCase):
             result.stderr,
         )
 
-    def test_actions_are_single_hyprctl_requests(self):
+    def test_actions_use_the_route_and_the_container_runner(self):
+        import desktop_route
+
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            runtime = root / "ftH.test"
+            runtime = root / "runtime"
             (runtime / "hypr" / "sig").mkdir(parents=True)
-            log = root / "hyprctl.log"
+            config_home = root / "stage"
+            config_home.mkdir()
+            route = root / "frametop-hyprland.route"
+            route.write_text(
+                f"pid={os.getpid()}\ncontrol=ft_hyprland\nruntime={runtime}\n"
+                f"wayland=/tmp/ft-hyprland-test\nconfig_home={config_home}\n"
+            )
+            self.assertEqual(desktop_route.signature(str(runtime)), ("sig", None))
+            self.assertIsNotNone(desktop_route.desktop_target(str(route), plasma=False))
+            self.assertIsNone(desktop_route.desktop_target(str(route), plasma=True))
+            log = root / "calls.log"
             bindir = root / "bin"
             bindir.mkdir()
-            hyprctl = bindir / "hyprctl"
-            hyprctl.write_text('#!/bin/sh\necho "$@" >> "$FT_TEST_LOG"\n')
-            hyprctl.chmod(0o755)
+            tool = '#!/bin/sh\necho "$0 $*" >> "$FT_TEST_LOG"\necho "runtime=$XDG_RUNTIME_DIR sig=$HYPRLAND_INSTANCE_SIGNATURE config=$XDG_CONFIG_HOME" >> "$FT_TEST_LOG"\n'
+            for name in ("hyprctl", "qs", "foot", "dolphin", "google-chrome-stable"):
+                path = bindir / name
+                path.write_text(tool)
+                path.chmod(0o755)
+            runner = root / "runner"
+            runner.write_text("#!/bin/sh\nexec \"$@\"\n")
+            runner.chmod(0o755)
             env = dict(
                 HOME=str(root),
-                FT_HYPR_RUNTIME=str(runtime),
+                FT_HYPR_ROUTE=str(route),
                 FT_TEST_LOG=str(log),
-                FT_USER_CONFIG_HOME=str(root / "unused"),
+                FT_DESKTOP_RUNNER=str(runner),
+                FT_DESKTOP_FOREGROUND="1",
                 PATH=str(bindir) + os.pathsep + "/usr/bin:/bin",
             )
-            for action, line in (
-                ("workspace-prev", "dispatch workspace r-1"),
-                ("workspace-next", "dispatch workspace r+1"),
-                ("window-prev", "dispatch movetoworkspacesilent r-1"),
-                ("window-next", "dispatch movetoworkspacesilent r+1"),
-                ("close", "dispatch closewindow"),
-            ):
+            expected = {
+                "workspace-prev": "dispatch workspace r-1",
+                "workspace-next": "dispatch workspace r+1",
+                "window-prev": "dispatch movetoworkspacesilent r-1",
+                "window-next": "dispatch movetoworkspacesilent r+1",
+                "close": "dispatch closewindow",
+                "terminal": None,
+                "files": None,
+                "browser": None,
+                "launcher": "-c ii ipc --any-display call search toggle",
+            }
+            for action, line in expected.items():
                 with self.subTest(action=action):
                     log.write_text("")
                     result = run(SESSION / "frame-desktop-action.sh", action, **env)
                     self.assertEqual(result.returncode, 0, result.stderr)
-                    self.assertEqual(log.read_text().strip(), line)
+                    text = log.read_text()
+                    self.assertIn(f"runtime={runtime}", text)
+                    self.assertIn("sig=sig", text)
+                    self.assertIn(f"config={config_home}", text)
+                    if line:
+                        self.assertIn(line, text)
+                    elif action == "terminal":
+                        self.assertIn("foot", text)
+                    elif action == "files":
+                        self.assertIn("dolphin", text)
+                    else:
+                        self.assertIn("google-chrome-stable", text)
             log.write_text("")
-            qs = bindir / "qs"
-            qs.write_text('#!/bin/sh\necho "$@" >> "$FT_TEST_LOG"\n')
-            qs.chmod(0o755)
-            result = run(SESSION / "frame-desktop-action.sh", "launcher", **env)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(log.read_text().strip(), "-c ii ipc call search toggle")
             result = run(SESSION / "frame-desktop-action.sh", "nope", **env)
             self.assertEqual(result.returncode, 2)
+            route.write_text(route.read_text().replace(f"pid={os.getpid()}", "pid=99999999"))
+            log.write_text("")
+            result = run(SESSION / "frame-desktop-action.sh", "close", **env)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertEqual(log.read_text(), "")
+            (runtime / "hypr" / "other").mkdir()
+            route.write_text(
+                f"pid={os.getpid()}\ncontrol=ft_hyprland\nruntime={runtime}\n"
+                f"wayland=/tmp/ft-hyprland-test\nconfig_home={config_home}\n"
+            )
+            result = run(SESSION / "frame-desktop-action.sh", "close", **env)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn("more than one", result.stderr)
+            missing = root / "missing.route"
+            result = run(SESSION / "frame-desktop-action.sh", "close", FT_HYPR_ROUTE=str(missing), HOME=str(root))
+            self.assertEqual(result.returncode, 2, result.stderr)
 
     def test_forwarder_keeps_keys_and_drops_layout_commands(self):
         self.assertTrue(hyprland_key_forward.allowed(b"key 28 1"))

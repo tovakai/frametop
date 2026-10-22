@@ -5,17 +5,17 @@
     "modifier": "right/trigger",
     "swallow_click": "right/bumper",
     "normal": {
-      "right/x": "command:frame-desktop-action workspace-prev",
-      "right/b": "command:frame-desktop-action workspace-next",
-      "right/a": "command:frame-desktop-action window-next",
-      "right/y": "command:frame-desktop-action window-prev"
+      "right/x": "command:frame-desktop-action.sh workspace-prev",
+      "right/b": "command:frame-desktop-action.sh workspace-next",
+      "right/a": "command:frame-desktop-action.sh window-next",
+      "right/y": "command:frame-desktop-action.sh window-prev"
     },
     "modified": {
-      "right/a": "command:frame-desktop-action files",
-      "right/b": "command:frame-desktop-action browser",
-      "right/x": "command:frame-desktop-action terminal",
-      "right/y": "command:frame-desktop-action launcher",
-      "right/bumper": "command:frame-desktop-action close"
+      "right/a": "command:frame-desktop-action.sh files",
+      "right/b": "command:frame-desktop-action.sh browser",
+      "right/x": "command:frame-desktop-action.sh terminal",
+      "right/y": "command:frame-desktop-action.sh launcher",
+      "right/bumper": "command:frame-desktop-action.sh close"
     }
   }
 }

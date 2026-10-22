@@ -66,6 +66,7 @@
 
 #include "vr.h"
 #include "controller-click.h"
+#include "chord-click.h"
 #include "remote.h"
 #include "relay-buttons.h"
 
@@ -137,8 +138,7 @@ struct server {
     struct screen *pointer_focus;
     struct ft_relay_buttons relay_buttons;  // the input relay's mouse buttons held on the seat
     struct ft_controller_click controller_click;
-    bool chord_click;      // trigger held: the controller's left click is a chord, not a click
-    bool chord_swallowed;  // that click is down, so its release is swallowed too
+    struct ft_chord_guard chord;  // trigger+R1: swallow the click, including a late release
     pid_t child;
     // Where typing goes: the screens after a click on one, Steam after a click on another
     // panel. The input relay grabs the keyboards while it's the screens (see keys_update).
@@ -363,19 +363,13 @@ static void handle_vr_event(const struct ft_event *e, void *data) {
         panel_key(s, e->key, e->pressed);
         return;
     }
-    // Trigger + R1. SteamVR still delivers R1 as a left click; the relay has armed this
-    // so the click does not reach the desktop. One press tells the relay to close once.
-    if (e->type == FT_BUTTON && e->controller && e->button == BTN_LEFT && s->chord_click) {
-        if (e->pressed) {
-            if (!s->chord_swallowed) {
-                s->chord_swallowed = true;
-                relay_say(s, "chord-fired");
-            }
-            return;
-        }
-        if (s->chord_swallowed) {
-            s->chord_swallowed = false;
-            relay_say(s, "chord-released");
+    // Trigger + R1. SteamVR still delivers R1 as a left click. The relay arms the
+    // guard while the trigger is down. A press that was swallowed stays swallowed
+    // if the trigger is released first, so that release is not a left click.
+    if (e->type == FT_BUTTON && e->controller && e->button == BTN_LEFT) {
+        bool notify = false;
+        if (ft_chord_guard_button(&s->chord, e->pressed, &notify) == FT_CHORD_SWALLOW) {
+            if (notify) relay_say(s, e->pressed ? "chord-fired" : "chord-released");
             return;
         }
     }
@@ -764,8 +758,7 @@ static int control_readable(int fd, uint32_t mask, void *data) {
                 s->controller_click.dragging ? "true" : "false", s->controller_click.suppressed,
                 s->controller_click.clicks, s->controller_click.drags);
         } else if (sscanf(buf, "chord-click %d", &value) == 1) {
-            s->chord_click = value != 0;
-            if (!s->chord_click) s->chord_swallowed = false;
+            ft_chord_guard_set_armed(&s->chord, value != 0);
             snprintf(reply, sizeof reply, "ok");
         } else if (sscanf(buf, "controller-click %lf %c", &scale, &tail) == 1) {
             if (!isfinite(scale) || scale < 0 || scale > 64 || s->controller_click.buttons)

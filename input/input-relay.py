@@ -63,10 +63,13 @@ reaches games; see pointer/helper/vrbuttons.h).
 "controller_chords" is optional and separate. Its modifier (right/trigger) does nothing
 alone. A face button invokes normal or, when the trigger is already down, modified.
 Releases never invoke a second action. right/bumper stays SteamVR's left click; while
-the trigger is down the relay tells ft-screens "chord-click 1", and a swallowed click
-comes back as "chord-fired". Chords are not bound during a VR game or while Frametop
-is paused, and held state is cleared then and when typing leaves the desktop.
-input/controller_chords.py is the state machine. The profile in
+the trigger is down the relay tells the experimental compositor "chord-click 1", and a
+swallowed click comes back as "chord-fired". Those buttons are requested only while
+$XDG_RUNTIME_DIR/frametop-hyprland.route names a live session, Plasma's compositor is
+not running, typing is going to the desktop, and no VR game or pause is active.
+They are left out when controller_in_games is set, because that flag applies to the
+whole bind list. Held state is cleared when the route, the desktop, or the game
+changes. input/controller_chords.py is the state machine. The profile in
 session/frame-controller-profile.json is not applied by this process.
 
 In gaze mode outside games, the helper keeps the pointer ("gazeawake 1", repeated every 5
@@ -160,6 +163,7 @@ import time
 
 import game_pause
 import controller_chords
+import desktop_route
 
 # Linux input constants (include/uapi/linux/input-event-codes.h, input.h, uinput.h).
 EV_SYN, EV_KEY, EV_REL, EV_MSC = 0x00, 0x01, 0x02, 0x04
@@ -249,6 +253,14 @@ VR_BUTTONS = ("left/view", "left/dpad_up", "left/dpad_down", "left/dpad_left", "
               "right/bumper", "right/trigger", "right/grip", "right/thumbstick")
 VR_DEVICE = "frame_controller"  # the id controller buttons have in watch events
 SCREENS = "\0" + os.environ.get("FT_CONTROL_SOCKET", "ft_screens")
+
+
+def desktop_addr():
+    """Experimental compositor while its route is live; otherwise the regular desktop."""
+    target = desktop_route.desktop_target()
+    if target:
+        return "\0" + target["control"]
+    return SCREENS
 GAZED = "\0ft_gazed"
 FLOAT = "\0frametop_float"  # ft-floatd, floating windows in the Frametop desktop
 # Actions for ft-floatd ("float_toggle", "dock_all"): they don't need pointer mode.
@@ -663,7 +675,7 @@ class Pointer:
                 pass  # the gaze service isn't running
         elif name == "screens_toggle":
             try:
-                self.sock.sendto(b"toggle", SCREENS)
+                self.sock.sendto(b"toggle", desktop_addr())
             except OSError:
                 pass  # ft-screens not running
         elif name == "layout_reset":
@@ -855,19 +867,33 @@ def main():
     state = {"pointer": None, "pointer_conf": None, "rules": {}, "share_keys": False,
              "desktop_until": 0.0, "typing_applied": None, "vr_capture_until": 0.0, "vr_bind_retry": False,
              "pointer_holding": False, "vr_game": False}
-    chord_box = {"impl": controller_chords.ControllerChords(None), "armed": False}
+    chord_box = {"impl": controller_chords.ControllerChords(None), "armed": False, "control": None}
     pipes = {}
+
+    def chords_active(now):
+        return desktop_route.chords_should_bind(
+            route_ok=desktop_route.desktop_target() is not None,
+            desktop_focused=now < state["desktop_until"],
+            paused=pause.paused,
+            game=bool(state.get("vr_game")),
+            capturing=now < state["vr_capture_until"],
+            controller_in_games=bool(state["rules"].get("controller_in_games")),
+        )
 
     def publish_chord_arm():
         armed = chord_box["impl"].armed
         if armed == chord_box["armed"]:
             return
         chord_box["armed"] = armed
+        target = desktop_route.desktop_target()
+        if target:
+            chord_box["control"] = "\0" + target["control"]
+        addr = chord_box["control"] if target else (None if armed else chord_box.get("control"))
         sock = pipes.get("screens")
-        if sock is None:
+        if sock is None or not addr:
             return
         try:
-            sock.sendto(b"chord-click 1" if armed else b"chord-click 0", SCREENS)
+            sock.sendto(b"chord-click 1" if armed else b"chord-click 0", addr)
         except OSError:
             pass
 
@@ -931,7 +957,7 @@ def main():
             chosen = [b for b, a in state["rules"]["controller_buttons"].items()
                       if b in VR_BUTTONS and known_action(a) and a not in ("key", "none")
                       and a not in GAZE_ACTIONS and (not pause.paused or works_paused(a))]
-            if not pause.paused and not state.get("vr_game"):
+            if chords_active(now):
                 for name in chord_box["impl"].bind_names():
                     if name in VR_BUTTONS and name not in chosen:
                         chosen.append(name)
@@ -954,10 +980,12 @@ def main():
             else:
                 reply(addr, {"t": "event", "id": VR_DEVICE, "path": "", "name": "Steam Frame controllers",
                              "type": "vr", "code": button, "value": value})
-        if chord_box["impl"].owns(button):
+        if chord_box["impl"].owns(button) and (chords_active(now) or chord_box["impl"].busy()):
             hand = button.split("/")[0]
+            active = chords_active(now)
             for action_name in chord_box["impl"].event(button, value):
-                do_action(action_name, 1, now, hand)
+                if active:
+                    do_action(action_name, 1, now, hand)
             publish_chord_arm()
             return
         action = state["rules"]["controller_buttons"].get(button)
@@ -972,7 +1000,7 @@ def main():
     def vr_keyboard(command):
         """Open or close Frametop's keyboard (ft-screens)."""
         try:
-            screens_sock.sendto(f"vrkeyboard {command}".encode(), SCREENS)
+            screens_sock.sendto(f"vrkeyboard {command}".encode(), desktop_addr())
         except OSError:
             pass  # ft-screens not running
 
@@ -1038,7 +1066,7 @@ def main():
         elif action in SCREENS_ACTIONS:
             if value == 1:
                 try:
-                    screens_sock.sendto(SCREENS_ACTIONS[action], SCREENS)
+                    screens_sock.sendto(SCREENS_ACTIONS[action], desktop_addr())
                 except OSError:
                     pass  # the Frametop desktop isn't running
                 log(action)
@@ -1127,7 +1155,7 @@ def main():
             return
         if code < BTN_MISC or (button and BTN_MOUSE <= code <= BTN_TASK) or (not value and code in screens_down):
             try:
-                screens_sock.sendto(f"key {code} {value}".encode(), SCREENS)
+                screens_sock.sendto(f"key {code} {value}".encode(), desktop_addr())
             except OSError:
                 return  # ft-screens not running
             (screens_down.add if value else screens_down.discard)(code)
@@ -1280,6 +1308,7 @@ def main():
             state["typing_applied"] = desktop
             if not desktop:
                 drop_chords()
+            vr_bind(time.monotonic())
             log(f"typing goes to {'the desktop (keyboards grabbed)' if desktop else 'Steam'}")
         return waiting
 
@@ -1404,8 +1433,21 @@ def main():
         to_screens(code, 0)
     for code in range(BTN_MOUSE, BTN_TASK + 1):
         to_screens(code, 0, button=True)
+    state["route_mtime"] = desktop_route.mtime()
+
+    def sync_route(now):
+        """Bind or release chord buttons when the experimental session appears or exits."""
+        mtime = desktop_route.mtime()
+        if mtime == state["route_mtime"]:
+            return
+        state["route_mtime"] = mtime
+        if not chords_active(now):
+            drop_chords()
+        vr_bind(now)
+
     while True:
         now = time.monotonic()
+        sync_route(now)
         pointer = state["pointer"]
         if now >= next_scan:
             next_scan = now + 1.0

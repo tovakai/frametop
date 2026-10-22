@@ -33,7 +33,7 @@ if [ "${1:-}" = --inner ]; then
   # sun_path holds 108 bytes; nesting it under the user runtime directory overflows it and
   # Hyprland turns IPC off, so startup cannot add outputs.
   runtime=$(mktemp -d /tmp/ftH.XXXXXX)
-  trap 'rm -rf -- "$runtime"' EXIT
+  trap 'rm -rf -- "$runtime" || true' EXIT
   mkdir -p "$runtime/config" "$runtime/state"
   export XDG_RUNTIME_DIR="$runtime"
   export XDG_CONFIG_HOME="$runtime/config"
@@ -41,8 +41,48 @@ if [ "${1:-}" = --inner ]; then
   export XDG_CURRENT_DESKTOP=Hyprland XDG_SESSION_TYPE=wayland XDG_SESSION_DESKTOP=Hyprland
   export HYPRLAND_NO_SD_VARS=1 HYPRLAND_NO_SD_NOTIFY=1 HYPRLAND_NO_SD_TARGET=1
   export FT_HYPRLAND_STARTUP="$here/hyprland-on-start.sh"
+  export FT_FRAME_SESSION="${FT_FRAME_SESSION:-$here}"
   # shellcheck disable=SC1091
   . "$here/hyprland-env.sh"
+  if [ "${FT_QS_SMOKE:-}" = 1 ]; then
+    report=/tmp/ft-qs-smoke-report.txt
+    : > "$report"
+    (
+      sleep 8
+      {
+        echo "qs=$(command -v qs || true)"
+        qs --version 2>&1 || true
+        sigs=$(find "$XDG_RUNTIME_DIR/hypr" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null || true)
+        echo "signatures<<EOF"
+        printf '%s\n' "$sigs"
+        echo "EOF"
+        sig=$(printf '%s\n' "$sigs" | head -n 1)
+        count=$(printf '%s\n' "$sigs" | sed '/^$/d' | wc -l)
+        echo "signature_count=$count"
+        if [ "$count" -eq 1 ] && [ -n "$sig" ]; then
+          HYPRLAND_INSTANCE_SIGNATURE=$sig hyprctl version 2>&1 | head -n 3 || true
+          echo "bind_lines=$(HYPRLAND_INSTANCE_SIGNATURE=$sig hyprctl binds 2>/dev/null | wc -l)"
+        fi
+        if command -v qs >/dev/null 2>&1; then
+          XDG_CONFIG_HOME="${FT_USER_CONFIG_HOME:-$XDG_CONFIG_HOME}" qs -c "${FT_QS_CONFIG:-ii}" list --any-display >"$report.list" 2>&1 || true
+          echo "instances<<"
+          cat "$report.list" 2>/dev/null || true
+          echo ">>"
+          if XDG_CONFIG_HOME="${FT_USER_CONFIG_HOME:-$XDG_CONFIG_HOME}" qs -c "${FT_QS_CONFIG:-ii}" ipc --any-display call search toggle >"$report.ipc" 2>&1; then
+            echo "ipc_status=0"
+          else
+            status=$?
+            echo "ipc_status=$status"
+          fi
+          echo "ipc<<"
+          cat "$report.ipc" 2>/dev/null || true
+          echo ">>"
+        fi
+        pgrep -a qs || echo "qs-not-running"
+      } >> "$report" 2>&1
+    ) &
+    probe=$!
+  fi
   frametop_prepend_aquamarine "$root"
   config=${FT_HYPRLAND_CONFIG:-$here/hyprland-minimal.lua}
   echo "frametop: smoke running Hyprland for ${duration}s; safe timeout is expected" >&2
@@ -69,6 +109,9 @@ PY
   set -e
   if [ -n "${query:-}" ]; then
     wait "$query" || true
+  fi
+  if [ -n "${probe:-}" ]; then
+    wait "$probe" || true
   fi
   logf=$(find "$runtime" -name hyprland.log -print -quit 2>/dev/null || true)
   if [ -n "$logf" ]; then
@@ -101,13 +144,32 @@ ctl="ft_hypr_smoke_$$"
 echo "frametop: isolated --no-vr smoke; socket $sock, control $ctl, $count output(s)" >&2
 log=$(mktemp)
 trap 'rm -f "$log"' EXIT
+pass=()
+if [ "${FT_QS_SMOKE:-}" = 1 ]; then
+  export FT_FRAME_SESSION="${FT_FRAME_SESSION:-$here}"
+  export FT_HYPRLAND_CONFIG="${FT_HYPRLAND_CONFIG:-$here/hyprland-frame.lua}"
+fi
+for key in FT_HYPRLAND_CONFIG FT_USER_CONFIG_HOME FT_HYPR_CONFIG_ROOT FT_FRAME_SESSION FT_QS_SMOKE FT_QS_CONFIG FT_QS_LOG; do
+  if [ -n "${!key:-}" ]; then
+    pass+=("$key=${!key}")
+  fi
+done
 set +e
 "$root/scripts/in-box" "$root/screens/build/ft-screens" --no-vr \
-  --socket "$sock" --control "$ctl" "${screens[@]}" -- env FT_SCREEN_COUNT="$count" FT_HYPR_CONTROL="$ctl" FT_HYPRLAND_SMOKE_SECONDS="$duration" "$0" --inner \
+  --socket "$sock" --control "$ctl" "${screens[@]}" -- env "${pass[@]}" FT_SCREEN_COUNT="$count" FT_HYPR_CONTROL="$ctl" FT_HYPRLAND_SMOKE_SECONDS="$duration" "$0" --inner \
   >"$log" 2>&1
 status=$?
 set -e
 cat "$log" >&2
+if [ -f /tmp/ft-qs-smoke-report.txt ]; then
+  echo "frametop: quickshell smoke report" >&2
+  cat /tmp/ft-qs-smoke-report.txt >&2
+  rm -f /tmp/ft-qs-smoke-report.txt /tmp/ft-qs-smoke-report.txt.ipc
+fi
+if [ -f "${FT_QS_LOG:-}" ]; then
+  echo "frametop: quickshell log" >&2
+  cat "$FT_QS_LOG" >&2
+fi
 errors=0
 if (( status != 0 )); then
   echo "frametop: smoke process exited $status" >&2

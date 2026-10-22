@@ -29,6 +29,10 @@ class ControllerChords:
         self.down = set()
         self.click_latched = False
 
+    def busy(self):
+        """A modifier, face button, or swallowed click is still down."""
+        return self.modifier_down or bool(self.down) or self.click_latched
+
     @property
     def armed(self):
         """The next controller left-click should be swallowed."""

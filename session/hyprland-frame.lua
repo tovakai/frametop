@@ -4,7 +4,8 @@ local home = os.getenv("HOME") or ""
 local source = debug.getinfo(1, "S").source
 local here = source:sub(1, 1) == "@" and source:sub(2):match("(.*/)") or "./"
 local override = here .. "frame-hypr"
-local user = home .. "/.config/hypr"
+local user = os.getenv("FT_HYPR_CONFIG_ROOT")
+if not user or user == "" then user = home .. "/.config/hypr" end
 package.path = override .. "/?.lua;" .. override .. "/?/init.lua;"
     .. user .. "/?.lua;" .. user .. "/?/init.lua;" .. package.path
 
