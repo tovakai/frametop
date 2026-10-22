@@ -95,6 +95,39 @@ class FrameDesktopTests(unittest.TestCase):
         self.assertNotIn("os.execute", guard_code)
         self.assertNotIn("HOME", guard_code)
 
+    def test_theme_seed_rewrites_only_the_stage_copy(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            config = root / "stage" / "config"
+            impulse = config / "illogical-impulse"
+            impulse.mkdir(parents=True)
+            (impulse / "config.json").write_text('{"background": {"wallpaperPath": "/laptop/wall.png"}}\n')
+            theme = root / "stage" / "theme"
+            (theme / "quickshell" / "user" / "generated").mkdir(parents=True)
+            (theme / "quickshell" / "user" / "generated" / "colors.json").write_text("{}\n")
+            (theme / "fonts").mkdir()
+            (theme / "wallpaper.png").write_text("png")
+            state = root / "state"
+            runtime = root / "runtime"
+            runtime.mkdir()
+            result = run(
+                SESSION / "frame-theme.sh",
+                str(config),
+                XDG_STATE_HOME=str(state),
+                XDG_RUNTIME_DIR=str(runtime),
+                HOME=str(root / "home"),
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("FONTCONFIG_FILE=", result.stdout)
+            seeded = json.loads((impulse / "config.json").read_text())
+            self.assertEqual(seeded["background"]["wallpaperPath"], str(theme / "wallpaper.png"))
+            self.assertTrue((state / "quickshell" / "user" / "generated" / "colors.json").is_file())
+            self.assertEqual(
+                (state / "quickshell" / "user" / "generated" / "wallpaper" / "path.txt").read_text().strip(),
+                str(theme / "wallpaper.png"),
+            )
+            self.assertIn("breeze", (config / "gtk-3.0" / "settings.ini").read_text())
+
     def test_quickshell_absence_does_not_fail(self):
         with tempfile.TemporaryDirectory() as temp:
             home = Path(temp)

@@ -908,12 +908,15 @@ def main():
             chord_box["control"] = "\0" + target["control"]
         addr = chord_box["control"] if target else (None if armed else chord_box.get("control"))
         sock = pipes.get("screens")
+        message = b"chord-click 1" if armed else b"chord-click 0"
         if sock is None or not addr:
+            log(f"chord arm not sent ({message.decode()})")
             return
         try:
-            sock.sendto(b"chord-click 1" if armed else b"chord-click 0", addr)
-        except OSError:
-            pass
+            sock.sendto(message, addr)
+            log(f"chord arm {message.decode()}")
+        except OSError as error:
+            log(f"chord arm send failed: {error}")
 
     def drop_chords():
         chord_box["impl"].clear()
@@ -1403,7 +1406,9 @@ def main():
                     vr_button(words[1], int(words[2]), now)
                     continue
                 if cmd == "chord-fired":
-                    for action_name in chord_box["impl"].click_down():
+                    actions = chord_box["impl"].click_down()
+                    log(f"chord-fired -> {actions or 'none'}")
+                    for action_name in actions:
                         do_action(action_name, 1, now, "right")
                     continue
                 if cmd == "chord-released":

@@ -87,7 +87,136 @@ def copy_tree(src: Path, dest: Path) -> list[str]:
     return notes
 
 
-def stage(hypr: Path, quickshell: Path, dest: Path, replace: bool) -> list[str]:
+FONT_FAMILIES = (
+    "Google Sans Flex",
+    "Readex Pro",
+    "Space Grotesk",
+    "Material Symbols Rounded",
+    "JetBrainsMono Nerd Font",
+)
+
+SHELL_PATCHES = (
+    (
+        "quickshell/ii/modules/ii/notificationPopup/NotificationPopup.qml",
+        "Config.options.notifications.forceMonitor",
+        "Config.options.notifications.monitor",
+    ),
+    (
+        "quickshell/ii/modules/ii/bar/BarContent.qml",
+        "padding: workspacesWidget.widgetPadding",
+        "padding: 5",
+    ),
+    (
+        "quickshell/ii/modules/common/widgets/ToolbarTabBar.qml",
+        "property Item targetItem: contentItem.children[root.currentIndex]\n",
+        "property Item targetItem: contentItem.children[root.currentIndex] ?? null\n",
+    ),
+    (
+        "quickshell/ii/modules/common/widgets/ToolbarTabBar.qml",
+        "index: activeIndicator.targetItem.x\n",
+        "index: activeIndicator.targetItem?.x ?? 0\n",
+    ),
+    (
+        "quickshell/ii/modules/common/widgets/ToolbarTabBar.qml",
+        "index: activeIndicator.targetItem.x + activeIndicator.targetItem.width",
+        "index: (activeIndicator.targetItem?.x ?? 0) + (activeIndicator.targetItem?.width ?? 0)",
+    ),
+    (
+        "quickshell/ii/services/ConflictKiller.qml",
+        "            if (Config.ready) checkConflictsProc.running = true",
+        "            if (Quickshell.env(\"FT_FRAME_SESSION\")) return\n"
+        "            if (Config.ready) checkConflictsProc.running = true",
+    ),
+)
+
+
+def apply_frame_patches(dest: Path) -> list[str]:
+    """Correct staged shell bugs without editing the laptop copy."""
+    notes = []
+    for rel, old, new in SHELL_PATCHES:
+        path = dest / rel
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        if old not in text or new in text:
+            continue
+        path.write_text(text.replace(old, new), encoding="utf-8")
+        notes.append(f"patch {rel}")
+    return notes
+
+
+def copy_impulse(src: Path, dest: Path) -> list[str]:
+    """Shell settings live beside the Quickshell tree, not inside it."""
+    notes = []
+    dest.mkdir(parents=True, exist_ok=True)
+    config = src / "config.json"
+    if config.is_file() and not _has_secret(config):
+        shutil.copy2(config, dest / "config.json")
+    elif config.is_file():
+        notes.append(f"skip secret {config}")
+    for name in ("actions", "translations"):
+        child = src / name
+        if child.is_dir():
+            notes.extend(copy_tree(child, dest / name))
+    return notes
+
+
+def copy_theme_state(src: Path, dest: Path) -> list[str]:
+    """Wallpaper-derived colors and the shell's state files. Not the AI venv."""
+    wanted = (
+        "states.json",
+        "user/first_run.txt",
+        "user/generated/colors.json",
+        "user/generated/wallpaper/category.txt",
+        "user/generated/wallpaper/path.txt",
+    )
+    notes = []
+    for rel in wanted:
+        child = src / rel
+        if not child.is_file():
+            notes.append(f"missing theme {rel}")
+            continue
+        target = dest / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(child, target)
+    return notes
+
+
+def font_files_for_families(families: tuple[str, ...] | list[str]) -> list[Path]:
+    import subprocess
+
+    found: list[Path] = []
+    seen: set[str] = set()
+    for family in families:
+        try:
+            out = subprocess.check_output(["fc-list", family, "file"], text=True)
+        except (OSError, subprocess.CalledProcessError):
+            continue
+        for line in out.splitlines():
+            raw = line.split(":", 1)[0].strip()
+            if not raw:
+                continue
+            path = Path(raw)
+            if path.name in seen or not path.is_file():
+                continue
+            seen.add(path.name)
+            found.append(path)
+    return found
+
+
+def copy_font_files(files: list[Path], dest: Path) -> list[str]:
+    dest.mkdir(parents=True, exist_ok=True)
+    notes = []
+    for path in files:
+        if path.is_file():
+            shutil.copy2(path, dest / path.name)
+            notes.append(f"font {path.name}")
+    return notes
+
+
+def stage(hypr: Path, quickshell: Path, dest: Path, replace: bool,
+          impulse: Path | None = None, theme_state: Path | None = None,
+          wallpaper: Path | None = None, font_files: list[Path] | None = None) -> list[str]:
     if user_config_blocked(dest):
         raise SystemExit(f"frametop: refusing to write a Frame or user config directory: {dest}")
     if dest.exists() and any(dest.iterdir()) and not replace:
@@ -98,6 +227,17 @@ def stage(hypr: Path, quickshell: Path, dest: Path, replace: bool) -> list[str]:
     notes = []
     notes.extend(copy_tree(hypr, dest / "hypr"))
     notes.extend(copy_tree(quickshell, dest / "quickshell" / "ii"))
+    notes.extend(apply_frame_patches(dest))
+    if impulse is not None:
+        notes.extend(copy_impulse(impulse, dest / "illogical-impulse"))
+    theme = dest.parent / "theme"
+    if theme_state is not None:
+        notes.extend(copy_theme_state(theme_state, theme / "quickshell"))
+    if wallpaper is not None and wallpaper.is_file():
+        theme.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(wallpaper, theme / "wallpaper.png")
+    if font_files:
+        notes.extend(copy_font_files(font_files, theme / "fonts"))
     return notes
 
 
@@ -107,8 +247,17 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--quickshell", type=Path, required=True)
     parser.add_argument("--dest", type=Path, required=True)
     parser.add_argument("--replace", action="store_true")
+    parser.add_argument("--impulse", type=Path)
+    parser.add_argument("--theme-state", type=Path)
+    parser.add_argument("--wallpaper", type=Path)
+    parser.add_argument("--fonts", action="store_true")
     args = parser.parse_args(argv)
-    notes = stage(args.hypr, args.quickshell, args.dest, args.replace)
+    fonts = font_files_for_families(FONT_FAMILIES) if args.fonts else None
+    notes = stage(
+        args.hypr, args.quickshell, args.dest, args.replace,
+        impulse=args.impulse, theme_state=args.theme_state,
+        wallpaper=args.wallpaper, font_files=fonts,
+    )
     for note in notes:
         print(note, file=sys.stderr)
     print(f"staged {args.dest}")

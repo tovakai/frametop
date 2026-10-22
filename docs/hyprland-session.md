@@ -115,6 +115,20 @@ see the shell when the caller is not the same display connection.
 The Fedora container has Quickshell 0.2.1
 (`dacfa9de829ac7cb173825f593236bf2c21f637e`). The laptop shell was written
 for 0.3.2 (`4f508be`). The 0.2.1 package is what the isolated smoke loaded.
+The broken first-test appearance was the missing theme, not that version
+gap. The laptop shell reads `~/.config/illogical-impulse/config.json`,
+`~/.local/state/quickshell/user/generated/colors.json`, a wallpaper, and
+the families Google Sans Flex, Readex Pro, Space Grotesk, JetBrainsMono
+Nerd Font, and Material Symbols Rounded. `session/stage-end4.py` copies
+those into `stage/` (fonts included) and does not write `~/.config`.
+`session/frame-theme.sh` seeds the session state directory from that copy
+and points fontconfig at the staged fonts for Quickshell only. Staged QML is patched where it reads properties the shell schema does not
+define (`forceMonitor`, `widgetPadding`, and an empty tab target); those
+are the same files on Quickshell 0.3.2. The staged conflict killer returns
+before it runs when `FT_FRAME_SESSION` is set, so it does not stop Plasma's
+`kded6`. PipeWire, Bluetooth, and
+UPower stay unavailable in the container, and no host service is installed
+to provide them.
 
 Plasma's `ft-screens` on `ft-screens-0` can stay running. The experimental
 session uses `ft-hyprland-0` and does not stop that process. Its compositor
@@ -184,6 +198,12 @@ anything. Releasing the trigger and the other button in either order does
 not launch a second action. Trigger+R1 does not bind the bumper, so the
 normal left click remains; ft-screens swallows that click only while
 `chord-click 1` is set and asks the relay to run the close action once.
+SteamVR attributes the click to the hand controller or to the pointer
+helper's virtual controller (`ft_pointer`). The guard accepts either.
+`e.controller` stays false for `ft_pointer`, so the 3D mouse's short drags
+are unchanged. A mouse click is neither source and is delivered while the
+trigger is held. The screens log records the device class and controller
+type for each left click, and the relay logs `chord arm` and `chord-fired`.
 Disarming leaves an already swallowed press swallowed, so releasing the
 trigger before R1 does not deliver the button-up. A VR game, pause, typing
 leaving the desktop, or the route file disappearing clears the modifier and
@@ -191,7 +211,7 @@ drops the buttons from the helper's bind list. They are also left unbound
 while `controller_in_games` is set. The commands are
 `command:frame-desktop-action.sh`, the file on `PATH`.
 
-## Relay deployment (not applied)
+## Relay deployment
 
 The user unit `frametop-input-relay.service` is `Type=notify` with
 `FileDescriptorStorePreserve=yes`. Its `ExecStart` is
@@ -199,10 +219,13 @@ The user unit `frametop-input-relay.service` is `Type=notify` with
 Restarting that unit keeps the virtual mouse and keyboard file descriptors
 in systemd's store, so SteamVR does not have to reopen them.
 
-This checkout's relay is not the running process. Switching it, merging
-`controller_chords` into `~/.config/frametop-input.json`, and restarting
-the unit are separate steps and are not done here. After a switch, chords
-still stay idle until the experimental session writes the route file.
+The first live test switched the running relay with a drop-in and merged
+`controller_chords` into the headset rules. That test was rolled back:
+the drop-in is gone, `~/.config/frametop-input.json` is the pre-test copy,
+the unit again runs `frametop-api`, and the virtual devices were reused.
+`vrglobal` was turned back off. Do not restart the relay or launch another
+headset session until that is approved again. After a switch, chords stay
+idle until the experimental session writes the route file.
 
 Rollback, after a switch that has been approved and performed:
 

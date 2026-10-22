@@ -44,6 +44,29 @@ if [ "${1:-}" = --inner ]; then
   export FT_FRAME_SESSION="${FT_FRAME_SESSION:-$here}"
   # shellcheck disable=SC1091
   . "$here/hyprland-env.sh"
+  if [ "${FT_APP_PROBE:-}" = 1 ]; then
+    (
+      sleep 6
+      sig=$(find "$XDG_RUNTIME_DIR/hypr" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | head -n 1 || true)
+      report=/tmp/ft-app-probe.txt
+      {
+        echo "signature=$sig"
+        if [ -n "$sig" ]; then
+          export HYPRLAND_INSTANCE_SIGNATURE=$sig FT_DESKTOP_INNER=1
+          echo "direct-foot:"
+          hyprctl eval 'hl.dispatch(hl.dsp.exec_cmd("foot"))' || true
+          echo "action-files:"
+          "$here/frame-desktop-action.sh" files || true
+          echo "action-browser:"
+          "$here/frame-desktop-action.sh" browser || true
+          sleep 12
+          echo "clients:"
+          hyprctl clients || true
+        fi
+      } >"$report" 2>&1
+    ) &
+    app_probe=$!
+  fi
   if [ "${FT_QS_SMOKE:-}" = 1 ]; then
     report=/tmp/ft-qs-smoke-report.txt
     : > "$report"
@@ -113,6 +136,9 @@ PY
   if [ -n "${probe:-}" ]; then
     wait "$probe" || true
   fi
+  if [ -n "${app_probe:-}" ]; then
+    wait "$app_probe" || true
+  fi
   logf=$(find "$runtime" -name hyprland.log -print -quit 2>/dev/null || true)
   if [ -n "$logf" ]; then
     echo "frametop: hyprland log excerpts"
@@ -149,7 +175,7 @@ if [ "${FT_QS_SMOKE:-}" = 1 ]; then
   export FT_FRAME_SESSION="${FT_FRAME_SESSION:-$here}"
   export FT_HYPRLAND_CONFIG="${FT_HYPRLAND_CONFIG:-$here/hyprland-frame.lua}"
 fi
-for key in FT_HYPRLAND_CONFIG FT_USER_CONFIG_HOME FT_HYPR_CONFIG_ROOT FT_FRAME_SESSION FT_QS_SMOKE FT_QS_CONFIG FT_QS_LOG; do
+  for key in FT_HYPRLAND_CONFIG FT_USER_CONFIG_HOME FT_HYPR_CONFIG_ROOT FT_FRAME_SESSION FT_QS_SMOKE FT_QS_CONFIG FT_QS_LOG FT_APP_PROBE; do
   if [ -n "${!key:-}" ]; then
     pass+=("$key=${!key}")
   fi
@@ -161,6 +187,11 @@ set +e
 status=$?
 set -e
 cat "$log" >&2
+if [ -f /tmp/ft-app-probe.txt ]; then
+  echo "frametop: app probe" >&2
+  cat /tmp/ft-app-probe.txt >&2
+  rm -f /tmp/ft-app-probe.txt
+fi
 if [ -f /tmp/ft-qs-smoke-report.txt ]; then
   echo "frametop: quickshell smoke report" >&2
   cat /tmp/ft-qs-smoke-report.txt >&2

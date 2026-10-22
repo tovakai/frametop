@@ -50,6 +50,56 @@ class StageEnd4Tests(unittest.TestCase):
             home_dest = Path.home() / ".config" / "hypr"
             self.assertTrue(stage_end4.user_config_blocked(home_dest))
 
+    def test_stage_keeps_theme_files_and_patches_the_copy(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            hypr = root / "hypr"
+            (hypr / "hyprland").mkdir(parents=True)
+            (hypr / "hyprland.lua").write_text("hl = {}\n")
+            qs = root / "ii"
+            popup = qs / "modules" / "ii" / "notificationPopup" / "NotificationPopup.qml"
+            popup.parent.mkdir(parents=True)
+            popup.write_text("screen: Config.options.notifications.forceMonitor.enable\n")
+            bar = qs / "modules" / "ii" / "bar" / "BarContent.qml"
+            bar.parent.mkdir(parents=True)
+            bar.write_text("padding: workspacesWidget.widgetPadding\n")
+            killer = qs / "services" / "ConflictKiller.qml"
+            killer.parent.mkdir(parents=True)
+            killer.write_text("            if (Config.ready) checkConflictsProc.running = true\n")
+            (qs / "shell.qml").write_text("import Quickshell\n")
+            impulse = root / "impulse"
+            (impulse / "actions").mkdir(parents=True)
+            (impulse / "config.json").write_text('{"background": {"wallpaperPath": "/laptop/wall.png"}}\n')
+            (impulse / "installed_listfile").write_text("not copied\n")
+            state = root / "state"
+            colors = state / "user" / "generated"
+            colors.mkdir(parents=True)
+            (colors / "colors.json").write_text("{}\n")
+            (state / "states.json").write_text("{}\n")
+            wall = root / "wall.png"
+            wall.write_text("png")
+            font = root / "OneFont.ttf"
+            font.write_text("font")
+            dest = root / "repo" / "stage" / "config"
+            stage_end4.stage(
+                hypr, qs, dest, replace=False, impulse=impulse, theme_state=state,
+                wallpaper=wall, font_files=[font],
+            )
+            self.assertIn("monitor.enable", popup_text(dest))
+            self.assertIn("padding: 5", (dest / "quickshell/ii/modules/ii/bar/BarContent.qml").read_text())
+            killer_text = (dest / "quickshell/ii/services/ConflictKiller.qml").read_text()
+            self.assertIn("FT_FRAME_SESSION", killer_text)
+            self.assertTrue((dest / "illogical-impulse" / "config.json").is_file())
+            self.assertFalse((dest / "illogical-impulse" / "installed_listfile").exists())
+            theme = dest.parent / "theme"
+            self.assertTrue((theme / "quickshell" / "user" / "generated" / "colors.json").is_file())
+            self.assertTrue((theme / "wallpaper.png").is_file())
+            self.assertTrue((theme / "fonts" / "OneFont.ttf").is_file())
+
+
+def popup_text(dest: Path) -> str:
+    return (dest / "quickshell/ii/modules/ii/notificationPopup/NotificationPopup.qml").read_text()
+
 
 if __name__ == "__main__":
     unittest.main()

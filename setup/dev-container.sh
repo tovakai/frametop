@@ -35,6 +35,12 @@ packages=(
   openssl-devel libcurl-devel expat-devel libuuid-devel json-devel opus-devel pulseaudio-libs-devel
   # diagnostics and remote UI testing
   wayland-utils xorg-x11-server-Xvfb ImageMagick xdotool
+  # Experimental Hyprland session. These stay in the container: Dolphin and
+  # Firefox are the file manager and browser the controller chords launch,
+  # and the icon themes give Quickshell a fallback icon. The shell's named
+  # fonts are staged beside the config, not installed on the host.
+  dolphin firefox hicolor-icon-theme breeze-icon-theme
+  google-noto-sans-fonts google-noto-sans-mono-fonts wl-clipboard
 )
 
 on_frame_script "$FRAME_REPO" "${packages[@]}" <<'EOF'

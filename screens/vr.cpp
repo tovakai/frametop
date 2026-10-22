@@ -209,11 +209,19 @@ bool LaserPose(vr::TrackedDeviceIndex_t dev, Mat *out) {
     return true;
 }
 
-bool IsHandController(vr::TrackedDeviceIndex_t i) {
+bool ControllerType(vr::TrackedDeviceIndex_t i, char *type, size_t type_len) {
+    type[0] = 0;
     if (vr::VRSystem()->GetTrackedDeviceClass(i) != vr::TrackedDeviceClass_Controller) return false;
+    vr::VRSystem()->GetStringTrackedDeviceProperty(i, vr::Prop_ControllerType_String, type, type_len);
+    return true;
+}
+bool IsHandController(vr::TrackedDeviceIndex_t i) {
     char type[64] = "";
-    vr::VRSystem()->GetStringTrackedDeviceProperty(i, vr::Prop_ControllerType_String, type, sizeof type);
-    return std::strcmp(type, "ft_pointer") != 0;  // not the 3D mouse's virtual controller
+    return ControllerType(i, type, sizeof type) && std::strcmp(type, "ft_pointer") != 0;
+}
+bool IsVirtualPointer(vr::TrackedDeviceIndex_t i) {
+    char type[64] = "";
+    return ControllerType(i, type, sizeof type) && std::strcmp(type, "ft_pointer") == 0;
 }
 // "left", "right", or "head" (the headset) -> the device to pin to.
 vr::TrackedDeviceIndex_t HandDevice(const char *hand) {
@@ -2406,6 +2414,17 @@ void ft_vr_poll(void (*handle)(const struct ft_event *, void *), void *data) {
                     e.button = LinuxButton(ev.data.mouse.button);
                     e.pressed = ev.eventType == vr::VREvent_MouseButtonDown;
                     e.controller = IsHandController(ev.trackedDeviceIndex);
+                    e.virtual_pointer = IsVirtualPointer(ev.trackedDeviceIndex);
+                    if (e.button == BTN_LEFT) {
+                        char type[64] = "";
+                        const auto cls = vr::VRSystem()->GetTrackedDeviceClass(ev.trackedDeviceIndex);
+                        ControllerType(ev.trackedDeviceIndex, type, sizeof type);
+                        std::printf(
+                            "chord click source: device=%u class=%d type=%s hand=%d virtual_pointer=%d pressed=%d\n",
+                            ev.trackedDeviceIndex, static_cast<int>(cls), type[0] ? type : "-",
+                            e.controller ? 1 : 0, e.virtual_pointer ? 1 : 0, e.pressed ? 1 : 0);
+                        std::fflush(stdout);
+                    }
                     at();
                     if (!e.pressed && s.titleCarry) e.x = s.carryX, e.y = s.carryY, s.titleCarry = false;
                     // The release of a drag that went onto another remote screen, or off this

@@ -364,14 +364,23 @@ static void handle_vr_event(const struct ft_event *e, void *data) {
         panel_key(s, e->key, e->pressed);
         return;
     }
-    // Trigger + R1. SteamVR still delivers R1 as a left click. The relay arms the
+    // Trigger + R1. SteamVR still delivers R1 as a left click, attributed to the
+    // hand controller or to the ft_pointer virtual controller. The relay arms the
     // guard while the trigger is down. A press that was swallowed stays swallowed
     // if the trigger is released first, so that release is not a left click.
-    if (e->type == FT_BUTTON && e->controller && e->button == BTN_LEFT) {
-        bool notify = false;
-        if (ft_chord_guard_button(&s->chord, e->pressed, &notify) == FT_CHORD_SWALLOW) {
-            if (notify) relay_say(s, e->pressed ? "chord-fired" : "chord-released");
-            return;
+    // A mouse left click is neither source, so it is delivered while the chord is armed.
+    if (e->type == FT_BUTTON && e->button == BTN_LEFT) {
+        bool candidate = ft_chord_is_controller_click(e->controller, e->virtual_pointer, true);
+        if (candidate || s->chord.armed || s->chord.held) {
+            wlr_log(WLR_INFO, "chord click: hand=%d virtual_pointer=%d armed=%d held=%d pressed=%d",
+                    e->controller, e->virtual_pointer, s->chord.armed, s->chord.held, e->pressed);
+        }
+        if (candidate) {
+            bool notify = false;
+            if (ft_chord_guard_button(&s->chord, e->pressed, &notify) == FT_CHORD_SWALLOW) {
+                if (notify) relay_say(s, e->pressed ? "chord-fired" : "chord-released");
+                return;
+            }
         }
     }
     if (e->type == FT_KEYBOARD_CLOSED) {
@@ -779,6 +788,7 @@ static int control_readable(int fd, uint32_t mask, void *data) {
                 s->controller_click.clicks, s->controller_click.drags);
         } else if (sscanf(buf, "chord-click %d", &value) == 1) {
             ft_chord_guard_set_armed(&s->chord, value != 0);
+            wlr_log(WLR_INFO, "chord-click %d", value != 0);
             snprintf(reply, sizeof reply, "ok");
         } else if (sscanf(buf, "controller-click %lf %c", &scale, &tail) == 1) {
             if (!isfinite(scale) || scale < 0 || scale > 64 || s->controller_click.buttons)
