@@ -163,9 +163,9 @@ set -euo pipefail
 . "{env}"
 frametop_hyprland_require_one_panel
 test "$FT_SCREEN_COUNT" = 1
-test "$FT_HYPRLAND_SCREEN" = "1280x720@1.0"
+test "$FT_HYPRLAND_SCREEN" = "1920x1080@1.5"
 frametop_cmdline_is_hyprland_screens \\
-  "ft-screens --socket ft-hyprland-0 --control ft_hyprland --screen 1280x720@1.0 --spares 0" \\
+  "ft-screens --socket ft-hyprland-0 --control ft_hyprland --screen 1920x1080@1.5 --spares 0" \\
   ft-hyprland-0
 if frametop_cmdline_is_hyprland_screens \\
   "ft-screens --socket ft-screens-0 --screen 3440x1440@2.4 --spares 8" \\

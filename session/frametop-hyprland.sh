@@ -72,4 +72,5 @@ echo "frametop: starting experimental nested Hyprland ($count panel(s))" >&2
   FT_FRAME_SESSION="$here" \
   FT_USER_CONFIG_HOME="$config_home" \
   FT_HYPR_CONFIG_ROOT="$hypr_root" \
+  PATH="$here/bin:${PATH:-/usr/local/bin:/usr/bin}" \
   dbus-run-session Hyprland -c "$config"

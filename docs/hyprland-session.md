@@ -55,7 +55,7 @@ floating windows, remote desktop and automatic SteamVR keyboard are bypassed.
    outputs without VR, set `FT_SCREEN_COUNT=2`.
 5. Launch the experimental branch only when you're ready to test. From that
    checkout, `FT_DESKTOP_SESSION=hyprland ./session/frametop-session.sh`
-   starts **one** 1280×720 panel on sockets `ft-hyprland-0` and
+   starts **one** 1920×1080 panel on sockets `ft-hyprland-0` and
    `ft_hyprland`. It does not read `ft-layout screen-args` and does not
    change `~/.config/frametop-layout.json`. `FT_SCREEN_COUNT` other than 1
    is rejected. Cleanup kills only the `ft-screens` whose command line
@@ -124,14 +124,21 @@ send `keyboard steam`, so Plasma keeps that signal. Chord buttons follow the
 Hyprland signal. They drop when the dashboard is in front, the route file
 disappears, or the focus message stops.
 
+While that panel has focus, the relay does not treat a Meta tap as the Steam
+menu, and it grabs the keyboard for the panel even if Plasma has also claimed
+the desktop. Keys are delivered as Wayland keycodes. The laptop config's scale
+of 1.25 is overridden to 1 on this panel. App keybinds call
+`session/frame-app.sh` instead of the laptop's `~/.config/hypr` scripts.
+Controller clicks are also read from vrserver's input stream, because the
+helper's action sets stay inactive until SteamVR delivers overlay-global input.
+
 The installed input relay sends keys to `@ft_screens`. The experimental
 compositor listens on `@ft_hyprland`, and `session/hyprland-key-forward.py`
 forwards key, click, and chord messages while `@ft_screens` is free. It
 does not start when Plasma's compositor already holds that name. The relay
 in this checkout, once it is the running unit, sends desktop input to the
-route's control socket while the route is live and Plasma's `ft-screens` is
-not running. Chord buttons are requested only in that same case, and only
-while typing is going to the desktop.
+route's control socket while the Hyprland panel has focus. Chord buttons are
+requested in that same case.
 
 ## Remaining gates
 

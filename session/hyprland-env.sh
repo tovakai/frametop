@@ -32,11 +32,11 @@ frametop_prepend_aquamarine() {
   echo "frametop: using patched aquamarine ($dir)" >&2
 }
 
-# Experimental VR launch. One 1280x720 panel on its own sockets, never the
+# Experimental VR launch. One 1920x1080 panel on its own sockets, never the
 # saved Plasma layout (ft-layout screen-args) and never FT_SCREEN_COUNT from it.
 FT_HYPRLAND_SOCKET=ft-hyprland-0
 FT_HYPRLAND_CONTROL=ft_hyprland
-FT_HYPRLAND_SCREEN=1280x720@1.0
+FT_HYPRLAND_SCREEN=1920x1080@1.5
 
 # Host-side description of the one nested session. The relay and
 # frame-desktop-action.sh read it; they do not search /tmp/ftH.*.

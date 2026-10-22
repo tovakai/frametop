@@ -1,0 +1,11 @@
+#!/bin/sh
+# Keybinds run qs with Hyprland's own config directory. The shell lives in
+# the staged laptop config, and its IPC socket is not on this display.
+config=${FT_USER_CONFIG_HOME:-$XDG_CONFIG_HOME}
+export XDG_CONFIG_HOME="$config"
+if [ "${1:-}" = "-c" ] && [ "${3:-}" = "ipc" ]; then
+    config_name=$2
+    shift 3
+    exec /usr/bin/qs -c "$config_name" ipc --any-display "$@"
+fi
+exec /usr/bin/qs "$@"

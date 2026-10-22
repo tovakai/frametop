@@ -337,6 +337,7 @@ static void new_decoration(struct wl_listener *l, void *data) {
 // ---------------------------------------------------------------- input from the panels
 
 static void panel_key(struct server *s, uint32_t code, bool pressed);
+static int focused_screen(struct server *s);
 
 // Typing goes to remote screen `index` (or to the desktop: -1). The one it leaves lets go of
 // the keys it held.
@@ -605,7 +606,8 @@ static bool key_held(const struct wlr_keyboard *kb, uint32_t code) {
 }
 
 // One key to the focused screen, through the seat's keyboard so its xkb state and
-// modifiers stay right.
+// modifiers stay right. The keyboard device takes an evdev code (wlroots adds 8
+// for xkb). The Wayland event Hyprland reads is that same code plus 8.
 static void send_key(struct server *s, uint32_t code, int pressed) {
     s->typed_ms = now_ms();
     struct wlr_keyboard_key_event ev = {
@@ -613,7 +615,7 @@ static void send_key(struct server *s, uint32_t code, int pressed) {
         .state = pressed ? WL_KEYBOARD_KEY_STATE_PRESSED : WL_KEYBOARD_KEY_STATE_RELEASED};
     wlr_keyboard_notify_key(&s->keyboard, &ev);
     wlr_seat_keyboard_notify_modifiers(s->seat, &s->keyboard.modifiers);
-    wlr_seat_keyboard_notify_key(s->seat, ev.time_msec, code, ev.state);
+    wlr_seat_keyboard_notify_key(s->seat, ev.time_msec, code + 8, ev.state);
 }
 
 // The input relay's mouse buttons (relay-buttons.h) can be pressed: the pointer is on a
@@ -665,8 +667,23 @@ static void handle_key(struct server *s, uint32_t code, int value, char *reply, 
         return (void)snprintf(reply, size, "ok remote");
     }
     if (value || !key_held(&s->keyboard, code)) {
-        if (!s->seat->keyboard_state.focused_surface) return (void)snprintf(reply, size, "ok no focus");
-        if (!s->keys_desktop) return (void)snprintf(reply, size, "ok typing goes to Steam");
+        // A click focuses the panel. If that focus has gone, put it back on the
+        // panel before dropping the key: Hyprland only acts on keys delivered
+        // to its surface.
+        if (s->keys_desktop && !s->seat->keyboard_state.focused_surface) {
+            const int index = focused_screen(s);
+            struct screen *sc = index >= 0 ? s->screens[index] : NULL;
+            if (sc && sc->toplevel)
+                wlr_seat_keyboard_notify_enter(s->seat, sc->toplevel->base->surface, NULL, 0, NULL);
+        }
+        if (!s->seat->keyboard_state.focused_surface) {
+            wlr_log(WLR_INFO, "key %u dropped: the panel has no keyboard focus", code);
+            return (void)snprintf(reply, size, "ok no focus");
+        }
+        if (!s->keys_desktop) {
+            wlr_log(WLR_INFO, "key %u dropped: typing is not on this panel", code);
+            return (void)snprintf(reply, size, "ok typing goes to Steam");
+        }
     }
     send_key(s, code, value);
     snprintf(reply, size, "ok");

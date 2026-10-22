@@ -258,6 +258,14 @@ def tests():
     key(META, 1); key(META, 0)
     check("Meta tap (default): Steam menu", lines(steam_log), ["menu"])
     check("Meta tap: the desktop gets F24 before Meta's release", typed(), ["key 125 1"] + F24 + ["key 125 0"])
+    tell = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+    tell.sendto(b"keyboard hyprland", f"\0{tag}_relay")
+    time.sleep(0.05)
+    key(META, 1); key(META, 0)
+    check("Hyprland focus: Meta is not the Steam menu", lines(steam_log), ["menu"])
+    check("Hyprland focus: Meta reaches the desktop", typed(), ["key 125 1", "key 125 0"])
+    tell.sendto(b"keyboard hyprland 0", f"\0{tag}_relay")
+    time.sleep(0.05)
 
     key(RMETA, 1); key(RMETA, 2); key(RMETA, 2); key(RMETA, 0)
     check("right Meta held (autorepeat), then released: a tap", lines(steam_log), ["menu", "menu"])
@@ -454,4 +462,5 @@ def tests():
 
 threading.Thread(target=tests, daemon=True).start()
 sys.argv = [relay_path, "--no-grab"]
+os.environ["FT_CHORD_WATCH"] = "0"
 relay.main()

@@ -1,0 +1,9 @@
+-- The laptop variables name programs under ~/.config/hypr. That directory
+-- is the laptop's, so the Frame session launches the same apps directly.
+local root = os.getenv("FT_HYPR_CONFIG_ROOT") or ""
+dofile(root .. "/hyprland/variables.lua")
+local session = os.getenv("FT_FRAME_SESSION") or ""
+local launch = session .. "/frame-app.sh"
+terminal = launch .. " terminal"
+fileManager = launch .. " files"
+browser = launch .. " browser"

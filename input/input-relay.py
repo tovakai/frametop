@@ -163,6 +163,7 @@ import time
 
 import game_pause
 import controller_chords
+import frame_clicks
 import desktop_route
 
 # Linux input constants (include/uapi/linux/input-event-codes.h, input.h, uinput.h).
@@ -982,6 +983,17 @@ def main():
             if state["rules"].get("controller_in_games"):
                 buttons = "+games " + buttons
         state["vr_bind_retry"] = False
+        # SteamVR only delivers these action sets when overlay-global input is on.
+        # Remember that this process turned it on, and turn it off again when no
+        # controller button is mapped. The setting is SteamVR's, so a later
+        # restore must send "vrglobal off" if it is still on.
+        want_global = buttons != "-"
+        if want_global != state.get("vrglobal_on"):
+            try:
+                screens_sock.sendto(b"vrglobal on" if want_global else b"vrglobal off", HELPER)
+                state["vrglobal_on"] = want_global
+            except OSError:
+                pass
         try:
             screens_sock.sendto(f"vrbind {buttons}".encode(), HELPER)
         except BlockingIOError:
@@ -1099,6 +1111,10 @@ def main():
         """A key from a keyboard: does it complete a key combination ("key_bindings")? True if
         it was taken for one (then it isn't typed)."""
         nonlocal tap
+        # The experimental panel uses the laptop's own shortcuts, including a Meta
+        # tap for its launcher. Frametop's Meta tap would open the Steam menu instead.
+        if hyprland_focused(now):
+            return False
         if code in MODIFIERS:
             mod = MODIFIERS[code]
             if value == 1:
@@ -1208,6 +1224,16 @@ def main():
                     pass  # device already gone
 
     atexit.register(restore_keymaps)
+
+    def release_overlay_global():
+        if not state.get("vrglobal_on"):
+            return
+        try:
+            screens_sock.sendto(b"vrglobal off", HELPER)
+        except OSError:
+            pass
+
+    atexit.register(release_overlay_global)
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))  # so atexit runs on systemctl stop
 
     def take_volume(node):
@@ -1364,8 +1390,10 @@ def main():
                         was = hyprland_focused(now)
                         set_hyprland_until(now + 3.0 if on else 0.0)
                         if was != hyprland_focused(now):
+                            state["hyprland_was"] = hyprland_focused(now)
                             if not hyprland_focused(now):
                                 drop_chords()
+                            apply_roles()
                             vr_bind(now)
                         continue
                     desktop = len(words) > 1 and words[1] == "desktop" and not pause.paused
@@ -1452,6 +1480,13 @@ def main():
                 reply(addr, msg)
 
     vr_bind(time.monotonic())  # a helper that's already running keeps its buttons in step
+    if os.environ.get("FT_CHORD_WATCH", "1") != "0":
+        # The helper's action sets do not become active until SteamVR honors
+        # overlay-global input. vrserver's own stream still reports the clicks.
+        def chord_click(button, value):
+            vr_button(button, value, time.monotonic())
+
+        frame_clicks.ClickWatch(chord_click, lambda: chords_active(time.monotonic()), log).start()
     waiting = False  # a keyboard's grab waits for its keys to come up
     # A relay that went away with a key down left it down on the desktop, where this one
     # never sent it: modifiers and mouse buttons come up there now (a release of a key that
@@ -1479,6 +1514,7 @@ def main():
             state["hyprland_was"] = focused
             if not focused:
                 drop_chords()
+            apply_roles()
             vr_bind(now)
         sync_route(now)
         pointer = state["pointer"]
