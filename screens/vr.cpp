@@ -2111,6 +2111,7 @@ int ft_vr_modifiers(uint32_t format, uint64_t *out, int max) {
 }
 
 bool ft_vr_screens_shown(void) { return g_vr && ModeVisible(); }
+bool ft_vr_steam_in_front(void) { return g_vr && SteamInFront(); }
 bool ft_vr_paused(void) { return g_paused; }
 
 bool ft_vr_screen_visible(int index) {

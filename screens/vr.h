@@ -37,6 +37,7 @@ void ft_vr_shutdown(void);
 int ft_vr_modifiers(uint32_t format, uint64_t *out, int max);
 // The screens are showing (by the visibility mode; not counting a wrist-pinned screen).
 bool ft_vr_screens_shown(void);
+bool ft_vr_steam_in_front(void);
 // Frametop is paused for a VR game ("pause on"): everything is hidden, and KWin slows down.
 bool ft_vr_paused(void);
 // Screen (or floating window) `index` shows now. True without SteamVR (--no-vr).

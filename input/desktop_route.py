@@ -112,6 +112,14 @@ def plasma_running():
     return found
 
 
+def live_route(path=None):
+    """The experimental session, whether or not Plasma's compositor is also up."""
+    info = load(path)
+    if info is None or not pid_alive(info["pid"]):
+        return None
+    return info
+
+
 def desktop_target(path=None, plasma=None):
     """Where experimental desktop input goes, or None to leave @ft_screens alone."""
     info = load(path)

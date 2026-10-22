@@ -253,13 +253,27 @@ VR_BUTTONS = ("left/view", "left/dpad_up", "left/dpad_down", "left/dpad_left", "
               "right/bumper", "right/trigger", "right/grip", "right/thumbstick")
 VR_DEVICE = "frame_controller"  # the id controller buttons have in watch events
 SCREENS = "\0" + os.environ.get("FT_CONTROL_SOCKET", "ft_screens")
+# Set by "keyboard hyprland" from the experimental compositor. Plasma keeps using
+# "keyboard desktop" / "keyboard steam" and does not clear this.
+HYPRLAND_UNTIL = 0.0
+
+
+def set_hyprland_until(until):
+    global HYPRLAND_UNTIL
+    HYPRLAND_UNTIL = until
+
+
+def hyprland_focused(now=None):
+    if now is None:
+        now = time.monotonic()
+    return now < HYPRLAND_UNTIL
 
 
 def desktop_addr():
-    """Experimental compositor while its route is live; otherwise the regular desktop."""
-    target = desktop_route.desktop_target()
-    if target:
-        return "\0" + target["control"]
+    """Hyprland while that panel has focus. Plasma's compositor keeps @ft_screens."""
+    route = desktop_route.live_route()
+    if route and (hyprland_focused() or not desktop_route.plasma_running()):
+        return "\0" + route["control"]
     return SCREENS
 GAZED = "\0ft_gazed"
 FLOAT = "\0frametop_float"  # ft-floatd, floating windows in the Frametop desktop
@@ -865,15 +879,18 @@ def main():
     # pointer: the 3D mouse while it's in use, pointer_conf: the one the config asks for (they
     # differ while Frametop is paused).
     state = {"pointer": None, "pointer_conf": None, "rules": {}, "share_keys": False,
-             "desktop_until": 0.0, "typing_applied": None, "vr_capture_until": 0.0, "vr_bind_retry": False,
+             "desktop_until": 0.0, "hyprland_was": False, "typing_applied": None, "vr_capture_until": 0.0, "vr_bind_retry": False,
              "pointer_holding": False, "vr_game": False}
     chord_box = {"impl": controller_chords.ControllerChords(None), "armed": False, "control": None}
     pipes = {}
 
     def chords_active(now):
+        route = desktop_route.live_route()
+        plasma = desktop_route.plasma_running()
+        focused = hyprland_focused(now) or (route is not None and not plasma and now < state["desktop_until"])
         return desktop_route.chords_should_bind(
-            route_ok=desktop_route.desktop_target() is not None,
-            desktop_focused=now < state["desktop_until"],
+            route_ok=route is not None,
+            desktop_focused=focused,
             paused=pause.paused,
             game=bool(state.get("vr_game")),
             capturing=now < state["vr_capture_until"],
@@ -885,7 +902,7 @@ def main():
         if armed == chord_box["armed"]:
             return
         chord_box["armed"] = armed
-        target = desktop_route.desktop_target()
+        target = desktop_route.live_route()
         if target:
             chord_box["control"] = "\0" + target["control"]
         addr = chord_box["control"] if target else (None if armed else chord_box.get("control"))
@@ -1283,7 +1300,7 @@ def main():
         A keyboard with a key down keeps its grab state until it's released, or the key
         would stay held on one side. Returns True if one is still waiting.
         """
-        desktop = time.monotonic() < state["desktop_until"]
+        desktop = time.monotonic() < state["desktop_until"] or hyprland_focused()
         waiting = False
         for node in nodes.values():
             if not node.candidate:
@@ -1341,6 +1358,16 @@ def main():
             try:
                 if cmd == "keyboard":
                     # From ft-screens (unbound, no reply): where typing goes, repeated every second.
+                    # "hyprland" is the experimental compositor. Plasma still says desktop or steam.
+                    if len(words) > 1 and words[1] == "hyprland":
+                        on = (len(words) < 3 or words[2] != "0") and not pause.paused
+                        was = hyprland_focused(now)
+                        set_hyprland_until(now + 3.0 if on else 0.0)
+                        if was != hyprland_focused(now):
+                            if not hyprland_focused(now):
+                                drop_chords()
+                            vr_bind(now)
+                        continue
                     desktop = len(words) > 1 and words[1] == "desktop" and not pause.paused
                     state["desktop_until"] = now + 3.0 if desktop else 0.0
                     continue
@@ -1447,6 +1474,12 @@ def main():
 
     while True:
         now = time.monotonic()
+        focused = hyprland_focused(now)
+        if focused != state["hyprland_was"]:
+            state["hyprland_was"] = focused
+            if not focused:
+                drop_chords()
+            vr_bind(now)
         sync_route(now)
         pointer = state["pointer"]
         if now >= next_scan:

@@ -481,16 +481,19 @@ static void handle_vr_event(const struct ft_event *e, void *data) {
 // the relay gives the keyboards back, so a closed desktop doesn't keep them.
 static void keys_update(struct server *s) {
     if (!s->vr || s->beside) return;  // a test instance leaves the running desktop's keyboards alone
-    const bool desktop = s->keys_clicked && ft_vr_screens_shown();
+    // This binary is the experimental session. "keyboard hyprland" is its own focus.
+    // It must not send "keyboard steam": Plasma's compositor shares that signal, and
+    // a steam message from here would take the keyboard away from Plasma.
+    const bool desktop = s->keys_clicked && ft_vr_screens_shown() && !ft_vr_steam_in_front();
     const uint32_t t = now_ms();
     if (desktop == s->keys_desktop && t - s->relay_sent < 1000) return;
-    if (desktop != s->keys_desktop) wlr_log(WLR_INFO, "typing goes to %s", desktop ? "the desktop" : "Steam");
+    if (desktop != s->keys_desktop) wlr_log(WLR_INFO, "typing goes to %s", desktop ? "Hyprland" : "elsewhere");
     s->keys_desktop = desktop;
     s->relay_sent = t;
     struct sockaddr_un addr = {.sun_family = AF_UNIX};
     const char name[] = "frametop_relay";
     memcpy(addr.sun_path + 1, name, sizeof name - 1);
-    const char *msg = desktop ? "keyboard desktop" : "keyboard steam";
+    const char *msg = desktop ? "keyboard hyprland" : "keyboard hyprland 0";
     sendto(s->relay_fd, msg, strlen(msg), MSG_DONTWAIT, (struct sockaddr *)&addr,
            offsetof(struct sockaddr_un, sun_path) + 1 + sizeof name - 1);
 }

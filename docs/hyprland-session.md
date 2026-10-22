@@ -116,6 +116,14 @@ The Fedora container has Quickshell 0.2.1
 (`dacfa9de829ac7cb173825f593236bf2c21f637e`). The laptop shell was written
 for 0.3.2 (`4f508be`). The 0.2.1 package is what the isolated smoke loaded.
 
+Plasma's `ft-screens` on `ft-screens-0` can stay running. The experimental
+session uses `ft-hyprland-0` and does not stop that process. Its compositor
+reports `keyboard hyprland` while its panel was clicked and the Steam
+dashboard is not in front, and `keyboard hyprland 0` otherwise. It does not
+send `keyboard steam`, so Plasma keeps that signal. Chord buttons follow the
+Hyprland signal. They drop when the dashboard is in front, the route file
+disappears, or the focus message stops.
+
 The installed input relay sends keys to `@ft_screens`. The experimental
 compositor listens on `@ft_hyprland`, and `session/hyprland-key-forward.py`
 forwards key, click, and chord messages while `@ft_screens` is free. It

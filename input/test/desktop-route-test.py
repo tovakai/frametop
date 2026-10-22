@@ -30,6 +30,7 @@ class DesktopRouteTests(unittest.TestCase):
             self.assertEqual(info["runtime"], str(runtime))
             self.assertEqual(desktop_route.signature(str(runtime))[0], "sig")
             self.assertIsNone(desktop_route.desktop_target(route, plasma=True))
+            self.assertEqual(desktop_route.live_route(route)["control"], "ft_hyprland")
 
     def test_dead_pid_and_ambiguous_signature_are_not_a_session(self):
         with tempfile.TemporaryDirectory() as temp:

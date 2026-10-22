@@ -71,8 +71,14 @@ if [ "$backend" = gamescope ] && [ $((width * height)) -gt $((1920 * 1080)) ]; t
 fi
 
 if [ "${1:-}" != --inner ]; then
-  # One instance at a time. The launcher can be clicked twice.
-  if pgrep -f '[v]r-overlay-key frametop ' >/dev/null || pgrep -x ft-screens >/dev/null; then
+  # One Plasma session at a time. The experimental Hyprland session uses another
+  # socket, so Plasma's ft-screens on ft-screens-0 stays up.
+  if [ "$desktop" = hyprland ]; then
+    if pgrep -f '[f]t-screens --socket ft-hyprland-0' >/dev/null; then
+      echo "experimental Hyprland session is already running" >&2
+      exit 0
+    fi
+  elif pgrep -f '[v]r-overlay-key frametop ' >/dev/null || pgrep -x ft-screens >/dev/null; then
     echo "Frametop is already running" >&2
     exit 0
   fi
