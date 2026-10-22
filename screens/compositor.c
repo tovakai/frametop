@@ -606,8 +606,8 @@ static bool key_held(const struct wlr_keyboard *kb, uint32_t code) {
 }
 
 // One key to the focused screen, through the seat's keyboard so its xkb state and
-// modifiers stay right. The keyboard device takes an evdev code (wlroots adds 8
-// for xkb). The Wayland event Hyprland reads is that same code plus 8.
+// modifiers stay right. The code is an evdev code. Hyprland's nested backend adds
+// 8 itself when it turns that into an xkb keycode, so the Wayland event stays evdev.
 static void send_key(struct server *s, uint32_t code, int pressed) {
     s->typed_ms = now_ms();
     struct wlr_keyboard_key_event ev = {
@@ -615,7 +615,7 @@ static void send_key(struct server *s, uint32_t code, int pressed) {
         .state = pressed ? WL_KEYBOARD_KEY_STATE_PRESSED : WL_KEYBOARD_KEY_STATE_RELEASED};
     wlr_keyboard_notify_key(&s->keyboard, &ev);
     wlr_seat_keyboard_notify_modifiers(s->seat, &s->keyboard.modifiers);
-    wlr_seat_keyboard_notify_key(s->seat, ev.time_msec, code + 8, ev.state);
+    wlr_seat_keyboard_notify_key(s->seat, ev.time_msec, code, ev.state);
 }
 
 // The input relay's mouse buttons (relay-buttons.h) can be pressed: the pointer is on a

@@ -126,7 +126,7 @@ disappears, or the focus message stops.
 
 While that panel has focus, the relay does not treat a Meta tap as the Steam
 menu, and it grabs the keyboard for the panel even if Plasma has also claimed
-the desktop. Keys are delivered as Wayland keycodes. The laptop config's scale
+the desktop. Keys are delivered as evdev codes, which is what Hyprland's nested backend expects. The laptop config's scale
 of 1.25 is overridden to 1 on this panel. App keybinds call
 `session/frame-app.sh` instead of the laptop's `~/.config/hypr` scripts.
 Controller clicks are also read from vrserver's input stream, because the
