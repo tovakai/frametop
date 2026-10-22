@@ -1,11 +1,13 @@
-"""Hardware-free preflight tests for the experimental Hyprland session.
+"""Offline preflight tests for the experimental Hyprland session.
 
-These must never start SteamVR, a container, or a nested compositor.
+They must never start SteamVR, a container, or a nested compositor.
 """
 
 import os
 import socket
 import subprocess
+import tempfile
+import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -13,10 +15,10 @@ ENTRY = ROOT / "session" / "frametop-session.sh"
 HYPRLAND = ROOT / "session" / "frametop-hyprland.sh"
 
 
-def run(script: Path, tmp_path: Path, **values: str) -> subprocess.CompletedProcess[str]:
+def run(script: Path, home: Path, **values: str) -> subprocess.CompletedProcess[str]:
     env = dict(os.environ)
-    env["HOME"] = str(tmp_path)
-    env["XDG_RUNTIME_DIR"] = str(tmp_path)
+    env["HOME"] = str(home)
+    env["XDG_RUNTIME_DIR"] = str(home)
     env.update(values)
     return subprocess.run(
         ["bash", str(script)],
@@ -29,55 +31,58 @@ def run(script: Path, tmp_path: Path, **values: str) -> subprocess.CompletedProc
     )
 
 
-def test_unknown_desktop_rejected_without_starting_desktop(tmp_path: Path):
-    result = run(ENTRY, tmp_path, FT_DESKTOP_SESSION="bogus")
-    assert result.returncode == 2
-    assert "unknown desktop session" in result.stderr
+class HyprlandPreflightTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.home = Path(self.temp.name)
 
-
-def test_hyprland_rejects_gamescope_before_start(tmp_path: Path):
-    result = run(
-        ENTRY, tmp_path, FT_DESKTOP_SESSION="hyprland", FT_BACKEND="gamescope"
-    )
-    assert result.returncode == 2
-    assert "requires BACKEND=screens" in result.stderr
-
-
-def test_hyprland_requires_ft_screens_socket(tmp_path: Path):
-    result = run(
-        HYPRLAND,
-        tmp_path,
-        WAYLAND_DISPLAY=str(tmp_path / "does-not-exist"),
-    )
-    assert result.returncode == 2
-    assert "Wayland socket" in result.stderr
-
-
-def test_hyprland_rejects_invalid_screen_counts(tmp_path: Path):
-    sock_path = tmp_path / "ft-screens-0"
-    with socket.socket(socket.AF_UNIX) as sock:
+    def socket_path(self):
+        sock_path = self.home / "ft-screens-0"
+        sock = socket.socket(socket.AF_UNIX)
         sock.bind(str(sock_path))
-        for count in ("0", "-1", "nope", "25"):
-            result = run(
-                HYPRLAND,
-                tmp_path,
-                WAYLAND_DISPLAY=str(sock_path),
-                FT_SCREEN_COUNT=count,
-            )
-            assert result.returncode == 2
-            assert "invalid FT_SCREEN_COUNT" in result.stderr
+        self.addCleanup(sock.close)
+        return sock_path
 
+    def test_unknown_desktop_rejected_before_start(self):
+        result = run(ENTRY, self.home, FT_DESKTOP_SESSION="bogus")
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("unknown desktop session", result.stderr)
 
-def test_hyprland_requires_config_file(tmp_path: Path):
-    sock_path = tmp_path / "ft-screens-0"
-    with socket.socket(socket.AF_UNIX) as sock:
-        sock.bind(str(sock_path))
+    def test_hyprland_rejects_gamescope_before_start(self):
         result = run(
-            HYPRLAND,
-            tmp_path,
-            WAYLAND_DISPLAY=str(sock_path),
-            FT_SCREEN_COUNT="1",
-            FT_HYPRLAND_CONFIG=str(tmp_path / "missing.conf"),
+            ENTRY, self.home, FT_DESKTOP_SESSION="hyprland", FT_BACKEND="gamescope"
         )
-    assert result.returncode == 2
-    assert "configuration not found" in result.stderr
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("requires BACKEND=screens", result.stderr)
+
+    def test_hyprland_requires_ft_screens_socket(self):
+        result = run(
+            HYPRLAND, self.home, WAYLAND_DISPLAY=str(self.home / "does-not-exist")
+        )
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("Wayland socket", result.stderr)
+
+    def test_hyprland_rejects_invalid_screen_counts(self):
+        sock_path = self.socket_path()
+        for count in ("0", "-1", "nope", "25"):
+            with self.subTest(count=count):
+                result = run(
+                    HYPRLAND, self.home, WAYLAND_DISPLAY=str(sock_path),
+                    FT_SCREEN_COUNT=count
+                )
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn("invalid FT_SCREEN_COUNT", result.stderr)
+
+    def test_hyprland_requires_config_file(self):
+        sock_path = self.socket_path()
+        result = run(
+            HYPRLAND, self.home, WAYLAND_DISPLAY=str(sock_path),
+            FT_SCREEN_COUNT="1", FT_HYPRLAND_CONFIG=str(self.home / "missing.conf")
+        )
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("configuration not found", result.stderr)
+
+
+if __name__ == "__main__":
+    unittest.main()
