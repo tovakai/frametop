@@ -85,6 +85,10 @@ class FrameDesktopTests(unittest.TestCase):
         self.assertNotIn("systemctl", code)
         self.assertNotIn("brightnessctl", code)
         self.assertIn("frame-quickshell.sh", code)
+        guard = (SESSION / "frame-hypr" / "hyprland" / "services" / "create_custom_config.lua").read_text()
+        guard_code = "\n".join(line for line in guard.splitlines() if not line.strip().startswith("--"))
+        self.assertNotIn("os.execute", guard_code)
+        self.assertNotIn("HOME", guard_code)
 
     def test_quickshell_absence_does_not_fail(self):
         with tempfile.TemporaryDirectory() as temp:

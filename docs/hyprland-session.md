@@ -99,7 +99,8 @@ autostart. Quickshell reads `FT_USER_CONFIG_HOME` (the staged
 or a missing shell exits that helper with status 0; Hyprland keeps running.
 `session/hyprland-minimal.lua` remains the fallback's reference.
 `FT_HYPRLAND_CONFIG` still selects another file. The session does not write
-`~/.config/hypr` or `~/.config/quickshell`.
+`~/.config/hypr` or `~/.config/quickshell`. `session/frame-hypr/hyprland/services/create_custom_config.lua`
+replaces the laptop startup hook that would create `~/.config/hypr/custom`.
 
 Before Hyprland starts, the session writes
 `$XDG_RUNTIME_DIR/frametop-hyprland.route` with its pid, the exact runtime
