@@ -1,7 +1,7 @@
 #!/bin/bash
 # Runs on the Frame host (not in the container). Starts a nested desktop with several
-# screens, each its own SteamVR panel. Plasma is the default; Hyprland is experimental. Modeled on /usr/bin/steamos-nested-desktop, which
-# does the same with one screen in gamescope.
+# screens, each its own SteamVR panel. Plasma is the default; Hyprland is experimental.
+# Modeled on /usr/bin/steamos-nested-desktop, which does the same with one screen in gamescope.
 #
 # Backends (BACKEND in ~/.config/frametop.conf):
 #   screens    (default) ft-screens (screens), our own compositor: KWin opens a
