@@ -29,19 +29,26 @@ floating windows, remote desktop and automatic SteamVR keyboard are bypassed.
    container. It may start a stopped dev container, but installs nothing.
 3. Install matching **aarch64** Hyprland (target 0.56.2, Aquamarine 0.15.1),
    `dbus-run-session` and optionally `foot` **inside that dev container**.
-   Fedora 44 has no official Hyprland binary. COPR `sdegler/hyprland` had
-   Fedora 44 aarch64 RPMs for both target versions in September 2026. It is
-   a third-party source: review provenance and versions first. A possible
-   explicitly approved, **container-only** install is
-   `dnf copr enable sdegler/hyprland` then `dnf install hyprland`.
-   Do not enable the COPR automatically or change the SteamOS host root.
-   Inspect current dependencies and the chosen repository before installing.
+   Fedora 44 has no official Hyprland binary. COPR `sdegler/hyprland` (a
+   clone of solopasha's packaging, no homepage) publishes Fedora 44 aarch64
+   RPMs: Hyprland 0.56.2-2 built from tag `v0.56.2` and Aquamarine 0.15.1-1.
+   Install them with a one-shot `--repofrompath` and
+   `--setopt=install_weak_deps=False`. Do not `dnf copr enable` it: a
+   persistent repo would pull Hyprland into later container upgrades, and
+   the weak dependencies `uwsm` and `xdg-desktop-portal-hyprland` run
+   `systemd-update-helper` for user units. Hyprland itself has no scriptlet.
+   Do not change the SteamOS host root.
+   That Aquamarine 0.15.1 still commits a buffer from `xdg_toplevel.configure`
+   before `ack_configure`, which wlroots rejects (`xdg_surface has never been
+   configured`). `session/build-aquamarine.sh` builds tag `v0.15.1` plus
+   upstream commit `7bb8bdf` into `build/aquamarine`. The session and the
+   smoke harness prepend that directory on `LD_LIBRARY_PATH`.
 4. First run `session/hyprland-smoke.sh` from the branch. It uses
    `ft-screens --no-vr` on **unique** Wayland/control socket names with an
    isolated Hyprland runtime and auto-exits after 15 seconds. It never
-   registers SteamVR panels. The test is still unvalidated on the Frame;
-   use SSH to capture its output and check for Wayland bind failures,
-   `screen 1: commit`, and any DMA-BUF errors. The harness also runs
+   registers SteamVR panels. The harness fails unless every output logs a
+   mapped `screen N: commit` of the requested size and the client stays
+   connected. It runs
    `wayland-info | session/hyprland-protocol-check.py` against the **actual**
    `ft-screens` socket before starting Hyprland. Protocol version checks are
    necessary but do not prove protocol behavior or DMA-BUF import. To exercise extra
@@ -65,6 +72,10 @@ validate SteamVR buffer import, panel rendering or controller interaction.
 Hyprland is launched through `scripts/in-box` with an absolute Wayland
 socket path, separate config/state folders (`~/.config/frametop/hyprland`
 and `~/.local/state/frametop/hyprland`) and a per-launch isolated runtime.
+The nested runtime directory is a short `/tmp/ftH.*` path. Hyprland's
+instance socket is `$XDG_RUNTIME_DIR/hypr/<abi signature>/.socket2.sock`,
+and `sockaddr_un.sun_path` holds 108 bytes; the user runtime directory
+makes that path too long and Hyprland disables IPC.
 `dbus-run-session` owns the nested bus; `HYPRLAND_NO_SD_VARS=1` and
 `HYPRLAND_NO_SD_TARGET=1` prevent nested Hyprland from importing variables
 or activating/stopping SteamOS user graphical session targets. The current
@@ -82,11 +93,16 @@ config, provided the container can see that same absolute path.
 
 ## Remaining gates
 
-- [ ] Live protocol audit for Aquamarine `wl_compositor` 6,
+- [x] Live protocol audit for Aquamarine `wl_compositor` 6,
       `wl_seat` 9, `xdg_wm_base` 6, `wl_shm` 1, and
-      `zwp_linux_dmabuf_v1` 4 with feedback. Only xdg-shell
-      advertisement changed; exact compatibility still requires a Frame run.
-- [ ] First successful DMA-BUF buffer import from nested Hyprland.
+      `zwp_linux_dmabuf_v1` 4 with feedback. ft-screens on wlroots 0.20.2
+      advertises each of those versions; `wayland-info` against a `--no-vr`
+      socket matches. Version checks do not prove DMA-BUF import.
+- [x] `--no-vr` DMA-BUF commits from nested Hyprland. One 1280×720 output
+      and two 1280×720 outputs both map `aquamarine - WAYLAND-N` toplevels
+      and report buffer commits on the control socket. This does not import
+      those buffers into SteamVR.
+- [ ] SteamVR `ImportDmabuf`, panel presentation, frame pacing, and input.
 - [ ] Input: controller click, keyboard focus, mouse and scroll.
 - [ ] Additional outputs and correct output-to-panel mapping. `ft-screens`
       currently assigns indices by initial creation order and reads

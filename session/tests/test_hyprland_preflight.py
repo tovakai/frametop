@@ -135,6 +135,28 @@ class HyprlandPreflightTests(unittest.TestCase):
         self.assertIn("ft_hypr_smoke_$", source)
         self.assertIn("HYPRLAND_NO_SD_TARGET=1", source)
         self.assertIn("timeout --signal=TERM", source)
+        self.assertIn("frametop_prepend_aquamarine", source)
+        self.assertIn("error in client communication", source)
+        self.assertIn("FT_HYPR_CONTROL", source)
+        self.assertIn('b"toplevels"', source)
+
+    def test_aquamarine_configure_fix_is_pinned(self):
+        patch = (ROOT / "session" / "patches" / "aquamarine-0.15.1-configure-ack.patch").read_text()
+        self.assertIn("applyConfigure", patch)
+        self.assertIn("sendAckConfigure", patch)
+        self.assertIn("pendingSize", patch)
+        build = (ROOT / "session" / "build-aquamarine.sh").read_text()
+        self.assertIn("2f9de98c0bd1b7b1b09c576e390a2fef436449762fb334163c414f0c300296f2", build)
+        self.assertIn("v0.15.1", build)
+        launcher = (ROOT / "session" / "frametop-hyprland.sh").read_text()
+        self.assertIn("frametop_prepend_aquamarine", launcher)
+        self.assertIn('LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"', launcher)
+
+    def test_hyprland_runtime_dir_fits_socket_path(self):
+        for name in ("hyprland-smoke.sh", "frametop-hyprland.sh"):
+            text = (ROOT / "session" / name).read_text()
+            self.assertIn("mktemp -d /tmp/ftH.XXXXXX", text, name)
+            self.assertNotIn("/run/user", text, name)
 
     def test_protocol_checker_accepts_matching_globals(self):
         script = ROOT / "session" / "hyprland-protocol-check.py"

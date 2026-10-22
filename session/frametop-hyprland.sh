@@ -27,9 +27,14 @@ fi
 # Host is immutable SteamOS; source builds and optional Hyprland installation
 # live in the Fedora dev container. in-box starts that container before entering
 # it, so do not change the wrapper's own runtime before calling it.
-host_runtime=${XDG_RUNTIME_DIR:?}
-# Per-launch private runtime (no chance to delete another nested session's sockets).
-runtime=$(mktemp -d "$host_runtime/frametop-hyprland.XXXXXXXX")
+# shellcheck disable=SC1091
+. "$here/hyprland-env.sh"
+frametop_prepend_aquamarine "$here/.."
+: "${XDG_RUNTIME_DIR:?}"
+# Hyprland's socket is $XDG_RUNTIME_DIR/hypr/<abi signature>/.socket2.sock.
+# sun_path holds 108 bytes; nesting it under the user runtime directory overflows it and
+# Hyprland turns IPC off, so startup cannot add outputs.
+runtime=$(mktemp -d /tmp/ftH.XXXXXX)
 cleanup() { rm -rf -- "$runtime"; }
 trap cleanup EXIT
 mkdir -p "$HOME/.config/frametop/hyprland" "$HOME/.local/state/frametop/hyprland"
@@ -40,6 +45,7 @@ mkdir -p "$HOME/.config/frametop/hyprland" "$HOME/.local/state/frametop/hyprland
 # We intentionally don't start Quickshell, portals, hypridle or other agents yet.
 echo "frametop: starting experimental nested Hyprland ($count panel(s))" >&2
 "$here/../scripts/in-box" env -u HYPRLAND_INSTANCE_SIGNATURE \
+  LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" \
   XDG_RUNTIME_DIR="$runtime" \
   WAYLAND_DISPLAY="$parent_wayland" \
   XDG_CONFIG_HOME="$HOME/.config/frametop/hyprland" \
