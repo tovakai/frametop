@@ -116,6 +116,26 @@ if [ "${1:-}" != --inner ]; then
   # ft-screens runs in Frametop's container (it's built against Fedora's wlroots); KWin and
   # Plasma stay on the host and connect to its socket. in-box starts the container in a scope
   # of its own, not this desktop's, or stopping the desktop would stop the container.
+  # HYPRLAND_VR_LAUNCH: one panel, its own sockets, saved layout is not read.
+  if [ "$desktop" = hyprland ]; then
+    # shellcheck disable=SC1091
+    . "$here/hyprland-env.sh"
+    frametop_hyprland_require_one_panel
+    socket=$FT_HYPRLAND_SOCKET
+    echo "frametop: experimental Hyprland VR session: 1 panel $FT_HYPRLAND_SCREEN (saved layout is not used)" >&2
+    "$here/../scripts/in-box" "$here/../screens/build/ft-screens" \
+      --socket "$socket" --control "$FT_HYPRLAND_CONTROL" \
+      --screen "$FT_HYPRLAND_SCREEN" --spares 0 \
+      > /tmp/frametop-hyprland-screens.log 2>&1 < /dev/null &
+    screens_pid=$!
+    stop_hyprland_screens() { frametop_stop_hyprland_session "$here/.." "$socket" "$screens_pid"; }
+    trap stop_hyprland_screens EXIT
+    for _ in $(seq 100); do [ -S "$XDG_RUNTIME_DIR/$socket" ] && break; sleep 0.2; done
+    [ -S "$XDG_RUNTIME_DIR/$socket" ] || { echo "ft-screens didn't start (see /tmp/frametop-hyprland-screens.log)" >&2; exit 1; }
+    WAYLAND_DISPLAY=$XDG_RUNTIME_DIR/$socket "$0" --inner
+    exit
+  fi
+  # PLASMA_VR_LAUNCH
   socket=ft-screens-0
   read -ra screen_args <<< "$("$here/../layout/ft-layout" screen-args)"
   export FT_SCREEN_COUNT=$(( ${#screen_args[@]} / 2 )) FT_FLOAT_SLOTS=$float_slots

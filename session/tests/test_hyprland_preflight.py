@@ -152,6 +152,47 @@ class HyprlandPreflightTests(unittest.TestCase):
         self.assertIn("frametop_prepend_aquamarine", launcher)
         self.assertIn('LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"', launcher)
 
+    def test_hyprland_vr_is_one_panel_and_scoped(self):
+        env = ROOT / "session" / "hyprland-env.sh"
+        result = subprocess.run(
+            ["bash", "-c", f"""
+set -euo pipefail
+. "{env}"
+frametop_hyprland_require_one_panel
+test "$FT_SCREEN_COUNT" = 1
+test "$FT_HYPRLAND_SCREEN" = "1280x720@1.0"
+frametop_cmdline_is_hyprland_screens \\
+  "ft-screens --socket ft-hyprland-0 --control ft_hyprland --screen 1280x720@1.0 --spares 0" \\
+  ft-hyprland-0
+if frametop_cmdline_is_hyprland_screens \\
+  "ft-screens --socket ft-screens-0 --screen 3440x1440@2.4 --spares 8" \\
+  ft-hyprland-0; then
+  exit 3
+fi
+set +e
+FT_SCREEN_COUNT=2 frametop_hyprland_require_one_panel
+status=$?
+set -e
+test "$status" = 2
+"""],
+            capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("one panel", result.stderr)
+        session = (ROOT / "session" / "frametop-session.sh").read_text()
+        hypr, plasma = session.split("# PLASMA_VR_LAUNCH", 1)
+        hypr = hypr.split("# HYPRLAND_VR_LAUNCH", 1)[1]
+        self.assertIn("frametop_hyprland_require_one_panel", hypr)
+        self.assertIn("frametop_stop_hyprland_session", hypr)
+        self.assertIn("saved layout is not used", hypr)
+        self.assertNotIn("screen-args", hypr)
+        self.assertNotIn("pkill -x", hypr)
+        self.assertIn("screen-args", plasma)
+        self.assertIn("pkill -x ft-screens", plasma)
+        stop = (ROOT / "session" / "hyprland-stop.sh").read_text()
+        self.assertIn("frametop_stop_hyprland_session", stop)
+        self.assertNotIn("pkill", stop)
+
     def test_hyprland_runtime_dir_fits_socket_path(self):
         for name in ("hyprland-smoke.sh", "frametop-hyprland.sh"):
             text = (ROOT / "session" / name).read_text()

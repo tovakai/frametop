@@ -31,3 +31,54 @@ frametop_prepend_aquamarine() {
   esac
   echo "frametop: using patched aquamarine ($dir)" >&2
 }
+
+# Experimental VR launch. One 1280x720 panel on its own sockets, never the
+# saved Plasma layout (ft-layout screen-args) and never FT_SCREEN_COUNT from it.
+FT_HYPRLAND_SOCKET=ft-hyprland-0
+FT_HYPRLAND_CONTROL=ft_hyprland
+FT_HYPRLAND_SCREEN=1280x720@1.0
+
+frametop_hyprland_require_one_panel() {
+  if [ -n "${FT_SCREEN_COUNT:-}" ] && [ "$FT_SCREEN_COUNT" != 1 ]; then
+    echo "frametop: experimental Hyprland VR session is one panel; refusing FT_SCREEN_COUNT=$FT_SCREEN_COUNT" >&2
+    return 2
+  fi
+  export FT_SCREEN_COUNT=1
+}
+
+# True when this command line is the experimental ft-screens, not another one.
+frametop_cmdline_is_hyprland_screens() {
+  local cmd=$1 socket=$2
+  case $cmd in
+    *"ft-screens --socket ${socket} "*|*"ft-screens --socket ${socket}") return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Stop this experimental session only. $1 is the repo root (for Hyprland's
+# config path), $2 the Wayland socket name, $3 the optional in-box wrapper pid.
+# Never uses pkill -x ft-screens.
+frametop_stop_hyprland_session() {
+  local root=$1 socket=$2 wrapper=${3:-} pid cmd
+  local config=$root/session/hyprland-minimal.lua
+  for pid in /proc/[0-9]*; do
+    pid=${pid#/proc/}
+    [[ $pid =~ ^[0-9]+$ ]] || continue
+    [ -r "/proc/$pid/cmdline" ] || continue
+    cmd=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)
+    [ -n "$cmd" ] || continue
+    if frametop_cmdline_is_hyprland_screens "$cmd" "$socket" ||
+       [[ $cmd == *"Hyprland -c ${config}"* ]]; then
+      kill "$pid" 2>/dev/null || true
+    fi
+  done
+  if [ -n "$wrapper" ]; then
+    kill "$wrapper" 2>/dev/null || true
+    local _
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      kill -0 "$wrapper" 2>/dev/null || return 0
+      sleep 0.1
+    done
+    kill -KILL "$wrapper" 2>/dev/null || true
+  fi
+}

@@ -53,13 +53,19 @@ floating windows, remote desktop and automatic SteamVR keyboard are bypassed.
    `ft-screens` socket before starting Hyprland. Protocol version checks are
    necessary but do not prove protocol behavior or DMA-BUF import. To exercise extra
    outputs without VR, set `FT_SCREEN_COUNT=2`.
-5. Launch the experimental branch only when you're ready to test. Start with
-   `FT_DESKTOP_SESSION=hyprland FT_SCREEN_COUNT=1` on a disposable
-   test session and verify a single panel renders and accepts input.
-   The branch currently has no separate Steam launcher: the caller must
-   explicitly select the branch's session script rather than running the
-   installed one. Do not symlink this branch over the active installation.
-6. Collect session logs and `/tmp/frametop-screens.log`; check SteamVR
+5. Launch the experimental branch only when you're ready to test. From that
+   checkout, `FT_DESKTOP_SESSION=hyprland ./session/frametop-session.sh`
+   starts **one** 1280×720 panel on sockets `ft-hyprland-0` and
+   `ft_hyprland`. It does not read `ft-layout screen-args` and does not
+   change `~/.config/frametop-layout.json`. `FT_SCREEN_COUNT` other than 1
+   is rejected. Cleanup kills only the `ft-screens` whose command line
+   carries `ft-hyprland-0`, and Hyprland started with this tree's minimal
+   config (`session/hyprland-stop.sh` does the same). The Plasma path still
+   uses the saved layout and its own `ft-screens-0` process. There is no
+   separate Steam launcher: run this checkout's session script. Do not
+   symlink it over the installed one.
+6. Collect `/tmp/frametop-hyprland-screens.log` (not the Plasma
+   `/tmp/frametop-screens.log`); check SteamVR
    frame timing and Plasma fallback before expanding to multiple outputs.
 
 The smoke harness may start Frametop's container and will create temporary
