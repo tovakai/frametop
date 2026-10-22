@@ -1,62 +1,82 @@
 # Experimental nested Hyprland session
 
-Branch: `feature/hyprland-session`, based on `rebuild/extension-api`.
+This branch is a smoke test, **not** a finished end-4/Quickshell port.
+No installers, live sessions or Steam launchers are modified by checking out
+this branch. Plasma remains the default (`DESKTOP=plasma`).
 
-This is a **smoke-test scaffold**, not a complete Hyprland/Quickshell port. The
-stock Plasma path stays the default. No installer or Steam launcher is changed.
-
-## Initial design
+## Architecture
 
 ```text
 SteamVR
-  └── ft-screens (SteamVR panels, input relay, DMA-BUF)
-        └── Hyprland (Wayland backend, one toplevel per output)
-              └── terminal (Quickshell later)
+  └── ft-screens (VR surfaces, pointer/keyboard relay, DMA-BUF)
+        └── Hyprland (nested Wayland backend, one output surface per panel)
+              └── simple terminal (Quickshell later)
 ```
 
-`DESKTOP=plasma|hyprland` in `~/.config/frametop.conf` selects the nested desktop
-independently from `BACKEND=screens|gamescope`. For a one-time experiment,
-`FT_DESKTOP_SESSION=hyprland` overrides the config. Hyprland currently requires
-`BACKEND=screens`. `FLOAT_SLOTS` is forced to zero; the Plasma-specific layout
-startup, floating daemon, remote desktop and text-input method are not launched.
+`FT_DESKTOP_SESSION=hyprland` chooses the experimental desktop for a
+**single launch**; `DESKTOP=hyprland` in `~/.config/frametop.conf` makes it
+the default (not recommended until tested). Only the `screens` backend is
+supported and `FLOAT_SLOTS` becomes 0. KWin-specific layout startup,
+floating windows, remote desktop and automatic SteamVR keyboard are bypassed.
 
-## Before a first launch on Frame
+## Hardware bring-up stages
 
-1. Build **this branch** of `ft-screens` inside the Fedora container using the
-   normal build workflow (`screens/build.sh`). This advertises `xdg_wm_base` v6
-   rather than v3. It still needs runtime validation on the Frame.
-2. Install a compatible **aarch64** Hyprland (target 0.56.2, Aquamarine 0.15.1),
-   `hyprctl`, `dbus-run-session`, and optionally `foot` **inside the same Fedora
-   development container**. Do not modify SteamOS's read-only root. Check
-   package versions/availability before installing.
-3. Use `FT_DESKTOP_SESSION=hyprland` for a disposable session, and keep the
-   ordinary Plasma launcher/checkout available for recovery. No Quickshell or
-   laptop autostarts should run at this stage.
-4. Check the session output, `/tmp/frametop-screens.log`, and the container
-   logs. Do not claim hardware support before verifying buffer import and input.
+1. Work in `feature/hyprland-session` **without overwriting the currently
+   installed Frametop checkout**. Build that branch's `screens/build.sh` in
+   Frametop's existing Fedora development container; it advertises
+   `xdg_wm_base` v6 rather than v3.
+2. Run `session/hyprland-doctor.sh` to check what's installed in the
+   container. It may start a stopped dev container, but installs nothing.
+3. Install matching **aarch64** Hyprland (target 0.56.2, Aquamarine 0.15.1),
+   `dbus-run-session` and optionally `foot` **inside that dev container**.
+   Fedora 44 has no official Hyprland binary. COPR `sdegler/hyprland` had
+   Fedora 44 aarch64 RPMs for both target versions in September 2026. It is
+   a third-party source: review provenance and versions first. A possible
+   explicitly approved, **container-only** install is
+   `dnf copr enable sdegler/hyprland` then `dnf install hyprland`.
+   Do not enable the COPR automatically or change the SteamOS host root.
+   Inspect current dependencies and the chosen repository before installing.
+4. Launch the experimental branch only when you're ready to test. Start with
+   `FT_DESKTOP_SESSION=hyprland FT_SCREEN_COUNT=1` on a disposable
+   test session and verify a single panel renders and accepts input.
+   The branch currently has no separate Steam launcher: the caller must
+   explicitly select the branch's session script rather than running the
+   installed one. Do not symlink this branch over the active installation.
+5. Collect session logs and `/tmp/frametop-screens.log`; check SteamVR
+   frame timing and Plasma fallback before expanding to multiple outputs.
 
-The new `session/frametop-hyprland.sh` launches Hyprland **inside the container**
-with a dedicated runtime/config/state path, and leaves the parent Wayland socket
-reachable by absolute path. It uses `HYPRLAND_NO_SD_VARS=1` and its own D-Bus
-session so that nested Hyprland does not rewrite SteamOS's user environment.
+## Session mechanics
 
-Set `FT_HYPRLAND_CONFIG=/path/to/config` to use a different experimental
-Hyprland config. This variable is optional and is **not** the laptop config by
-default. Its path must also be visible inside the container.
+Hyprland is launched through `scripts/in-box` with an absolute Wayland
+socket path, separate config/state folders (`~/.config/frametop/hyprland`
+and `~/.local/state/frametop/hyprland`) and a per-launch isolated runtime.
+`dbus-run-session` owns the nested bus; `HYPRLAND_NO_SD_VARS=1` and
+`HYPRLAND_NO_SD_TARGET=1` prevent nested Hyprland from importing variables
+or activating/stopping SteamOS user graphical session targets. The current
+compositor runs inside the Fedora dev container, not directly on the host.
 
-## Validation milestones
+The shipped **Lua** file `session/hyprland-minimal.lua` targets Hyprland
+0.56.2, using its `hl.*` configuration API. Its startup event launches
+`session/hyprland-on-start.sh` to add only the extra Wayland-backed outputs
+via `hyprctl output create wayland` and start one terminal if installed.
+`SUPER+SHIFT+E` exits the nested compositor. No wallpaper daemon, portal,
+hypridle, system agents, laptop shortcuts or Quickshell are started.
 
-- [ ] Confirm wl_compositor v6, wl_seat v9, xdg_wm_base v6 and linux-dmabuf v4
-      bindings from Aquamarine; `xdg_wm_base` was changed but other globals
-      still need a live compatibility audit.
-- [ ] Render ONE Wayland output to ONE Frametop panel with DMA-BUF import.
-- [ ] Verify controller pointer clicks, mouse movement, keyboard focus and scroll.
-- [ ] Create a second Wayland-backed output and validate size + panel mapping.
-- [ ] Test output removal/recreation: `ft-screens` currently assigns indices by
-      toplevel creation order and reads KWin-specific titles for spare outputs.
-- [ ] Test clean shutdown, pause/resume and ordinary Plasma fallback.
-- [ ] Integrate a Frame-specific end-4/Quickshell profile after those gates.
+`FT_HYPRLAND_CONFIG=/absolute/path/to/config.lua` overrides the minimal
+config, provided the container can see that same absolute path.
 
-Important: Hyprland's automatic keyboard, `ft-floatd`, KScreen integration,
-remote desktop and application restore are intentionally **not implemented**.
-The experimental startup also bypasses Frametop's KWin-aware layout initializer.
+## Remaining gates
+
+- [ ] Live protocol audit for Aquamarine `wl_compositor` 6,
+      `wl_seat` 9, `xdg_wm_base` 6, `wl_shm` 1, and
+      `zwp_linux_dmabuf_v1` 4 with feedback. Only xdg-shell
+      advertisement changed; exact compatibility still requires a Frame run.
+- [ ] First successful DMA-BUF buffer import from nested Hyprland.
+- [ ] Input: controller click, keyboard focus, mouse and scroll.
+- [ ] Additional outputs and correct output-to-panel mapping. `ft-screens`
+      currently assigns indices by initial creation order and reads
+      KWin-specific spare output titles; removal/recreation isn't safe yet.
+- [ ] Pause/resume, clean shutdown, Plasma fallback and frame pacing.
+- [ ] Hyprland adapters for KWin-specific floating windows, screen management,
+      remote desktop and automatic VR keyboard.
+- [ ] Frame-specific end-4/Quickshell profile.

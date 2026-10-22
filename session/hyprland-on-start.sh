@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Runs only inside the nested Hyprland process environment (never on SteamOS).
+set -euo pipefail
+count=${FT_SCREEN_COUNT:-1}
+if ! [[ $count =~ ^[1-9][0-9]*$ ]] || (( count > 24 )); then
+  echo "frametop: invalid FT_SCREEN_COUNT for output startup: $count" >&2
+  exit 2
+fi
+if ! command -v hyprctl >/dev/null 2>&1; then
+  echo "frametop: missing hyprctl in nested Hyprland environment" >&2
+  exit 1
+fi
+# Aquamarine already creates output 1. Each added Wayland-backed output opens
+# another host xdg_toplevel that ft-screens can map to a VR panel.
+for ((i = 1; i < count; i++)); do
+  if ! hyprctl output create wayland; then
+    echo "frametop: unable to create Wayland output $((i + 1))" >&2
+    exit 1
+  fi
+done
+if command -v foot >/dev/null 2>&1; then
+  exec foot
+elif command -v kitty >/dev/null 2>&1; then
+  exec kitty
+fi
+echo "frametop: no foot or kitty installed; nested compositor remains available" >&2

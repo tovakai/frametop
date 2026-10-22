@@ -83,6 +83,45 @@ class HyprlandPreflightTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2, result.stderr)
         self.assertIn("configuration not found", result.stderr)
 
+    def test_minimal_config_uses_lua(self):
+        config = (ROOT / "session" / "hyprland-minimal.lua").read_text()
+        self.assertIn("hl.monitor(", config)
+        self.assertIn('hl.on("hyprland.start"', config)
+        self.assertIn("hl.bind(", config)
+        launcher = HYPRLAND.read_text()
+        self.assertIn("hyprland-minimal.lua", launcher)
+        self.assertIn("HYPRLAND_NO_SD_VARS=1", launcher)
+        self.assertIn("HYPRLAND_NO_SD_TARGET=1", launcher)
+        self.assertIn("mktemp -d", launcher)
+
+    def test_output_startup_rejects_bad_count(self):
+        script = ROOT / "session" / "hyprland-on-start.sh"
+        result = run(script, self.home, FT_SCREEN_COUNT="0")
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("invalid FT_SCREEN_COUNT", result.stderr)
+
+    def test_output_startup_creates_only_extra_wayland_outputs(self):
+        binpath = self.home / "bin"
+        binpath.mkdir()
+        log = self.home / "calls.log"
+        hyprctl = binpath / "hyprctl"
+        hyprctl.write_text('#!/bin/sh\necho "$*" >> "$FT_TEST_LOG"\n')
+        hyprctl.chmod(0o755)
+        foot = binpath / "foot"
+        foot.write_text('#!/bin/sh\necho "terminal" >> "$FT_TEST_LOG"\n')
+        foot.chmod(0o755)
+        script = ROOT / "session" / "hyprland-on-start.sh"
+        result = run(
+            script, self.home, FT_SCREEN_COUNT="3",
+            PATH=str(binpath) + os.pathsep + os.environ.get("PATH", ""),
+            FT_TEST_LOG=str(log),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            log.read_text().splitlines(),
+            ["output create wayland", "output create wayland", "terminal"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

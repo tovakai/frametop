@@ -8,7 +8,8 @@ on:
     paths:
       - 'session/frametop-session.sh'
       - 'session/frametop-hyprland.sh'
-      - 'session/hyprland-minimal.conf'
+      - 'session/hyprland-minimal.lua'
+      - 'session/hyprland-on-start.sh'
       - 'session/tests/test_hyprland_preflight.py'
       - 'screens/compositor.c'
       - '.github/workflows/hyprland-session.yml'
@@ -23,6 +24,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Check session script syntax
-        run: bash -n session/frametop-session.sh session/frametop-hyprland.sh
+        run: bash -n session/frametop-session.sh session/frametop-hyprland.sh session/hyprland-on-start.sh session/hyprland-doctor.sh
+      - name: Check Lua config syntax
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lua5.4
+          luac5.4 -p session/hyprland-minimal.lua
       - name: Test hardware-free session preflight
         run: python3 -m unittest discover -s session/tests -p 'test_hyprland_preflight.py' -v
