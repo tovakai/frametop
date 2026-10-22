@@ -137,6 +137,8 @@ struct server {
     struct screen *pointer_focus;
     struct ft_relay_buttons relay_buttons;  // the input relay's mouse buttons held on the seat
     struct ft_controller_click controller_click;
+    bool chord_click;      // trigger held: the controller's left click is a chord, not a click
+    bool chord_swallowed;  // that click is down, so its release is swallowed too
     pid_t child;
     // Where typing goes: the screens after a click on one, Steam after a click on another
     // panel. The input relay grabs the keyboards while it's the screens (see keys_update).
@@ -343,6 +345,14 @@ static void set_key_remote(struct server *s, int index) {
     s->key_remote = index;
 }
 
+static void relay_say(struct server *s, const char *msg) {
+    struct sockaddr_un addr = {.sun_family = AF_UNIX};
+    const char name[] = "frametop_relay";
+    memcpy(addr.sun_path + 1, name, sizeof name - 1);
+    sendto(s->relay_fd, msg, strlen(msg), MSG_DONTWAIT, (struct sockaddr *)&addr,
+           offsetof(struct sockaddr_un, sun_path) + 1 + sizeof name - 1);
+}
+
 static void handle_vr_event(const struct ft_event *e, void *data) {
     struct server *s = data;
     if (e->type == FT_QUIT) {
@@ -352,6 +362,22 @@ static void handle_vr_event(const struct ft_event *e, void *data) {
     if (e->type == FT_KEY) {
         panel_key(s, e->key, e->pressed);
         return;
+    }
+    // Trigger + R1. SteamVR still delivers R1 as a left click; the relay has armed this
+    // so the click does not reach the desktop. One press tells the relay to close once.
+    if (e->type == FT_BUTTON && e->controller && e->button == BTN_LEFT && s->chord_click) {
+        if (e->pressed) {
+            if (!s->chord_swallowed) {
+                s->chord_swallowed = true;
+                relay_say(s, "chord-fired");
+            }
+            return;
+        }
+        if (s->chord_swallowed) {
+            s->chord_swallowed = false;
+            relay_say(s, "chord-released");
+            return;
+        }
     }
     if (e->type == FT_KEYBOARD_CLOSED) {
         if (s->kb_screen >= 0) wlr_log(WLR_INFO, "keyboard closed");
@@ -737,6 +763,10 @@ static int control_readable(int fd, uint32_t mask, void *data) {
                 s->controller_click.threshold, s->controller_click.held ? "true" : "false",
                 s->controller_click.dragging ? "true" : "false", s->controller_click.suppressed,
                 s->controller_click.clicks, s->controller_click.drags);
+        } else if (sscanf(buf, "chord-click %d", &value) == 1) {
+            s->chord_click = value != 0;
+            if (!s->chord_click) s->chord_swallowed = false;
+            snprintf(reply, sizeof reply, "ok");
         } else if (sscanf(buf, "controller-click %lf %c", &scale, &tail) == 1) {
             if (!isfinite(scale) || scale < 0 || scale > 64 || s->controller_click.buttons)
                 snprintf(reply, sizeof reply, "error threshold or held controller button");

@@ -60,6 +60,15 @@ sent on start, reload, and when the helper says "vrhello"), and only while no ga
 unless "controller_in_games" is true in the rules file (then a mapped button no longer
 reaches games; see pointer/helper/vrbuttons.h).
 
+"controller_chords" is optional and separate. Its modifier (right/trigger) does nothing
+alone. A face button invokes normal or, when the trigger is already down, modified.
+Releases never invoke a second action. right/bumper stays SteamVR's left click; while
+the trigger is down the relay tells ft-screens "chord-click 1", and a swallowed click
+comes back as "chord-fired". Chords are not bound during a VR game or while Frametop
+is paused, and held state is cleared then and when typing leaves the desktop.
+input/controller_chords.py is the state machine. The profile in
+session/frame-controller-profile.json is not applied by this process.
+
 In gaze mode outside games, the helper keeps the pointer ("gazeawake 1", repeated every 5
 seconds; "gazeawake 0" or silence ends it): the pointer isn't released when the mouse is idle.
 Typing on a keyboard sends the helper "typing" (at most 4 times a second): it takes no hand
@@ -150,6 +159,7 @@ import sys
 import time
 
 import game_pause
+import controller_chords
 
 # Linux input constants (include/uapi/linux/input-event-codes.h, input.h, uinput.h).
 EV_SYN, EV_KEY, EV_REL, EV_MSC = 0x00, 0x01, 0x02, 0x04
@@ -238,7 +248,7 @@ VR_BUTTONS = ("left/view", "left/dpad_up", "left/dpad_down", "left/dpad_left", "
               "left/trigger", "left/grip", "left/thumbstick", "right/menu", "right/a", "right/b", "right/x", "right/y",
               "right/bumper", "right/trigger", "right/grip", "right/thumbstick")
 VR_DEVICE = "frame_controller"  # the id controller buttons have in watch events
-SCREENS = "\0ft_screens"
+SCREENS = "\0" + os.environ.get("FT_CONTROL_SOCKET", "ft_screens")
 GAZED = "\0ft_gazed"
 FLOAT = "\0frametop_float"  # ft-floatd, floating windows in the Frametop desktop
 # Actions for ft-floatd ("float_toggle", "dock_all"): they don't need pointer mode.
@@ -272,7 +282,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FT_LAYOUT = os.path.join(REPO, "layout", "ft-layout")
 FT_STEAM = os.path.join(REPO, "steam", "ft-steam")
 # Commands ("command:CMD") find Frametop's own tools (ft-layout, ft-float, ft-steam) on their PATH.
-COMMAND_PATH = ":".join([os.path.join(REPO, d) for d in ("layout", "float", "steam")]
+COMMAND_PATH = ":".join([os.path.join(REPO, d) for d in ("layout", "float", "steam", "session")]
                         + [os.environ.get("PATH", "/usr/local/bin:/usr/bin")])
 DEFAULT_BUTTONS = {BTN_LEFT: "left", BTN_RIGHT: "right", BTN_MIDDLE: "middle",
                    BTN_SIDE: "back", BTN_EXTRA: "back"}
@@ -844,7 +854,33 @@ def main():
     # differ while Frametop is paused).
     state = {"pointer": None, "pointer_conf": None, "rules": {}, "share_keys": False,
              "desktop_until": 0.0, "typing_applied": None, "vr_capture_until": 0.0, "vr_bind_retry": False,
-             "pointer_holding": False}
+             "pointer_holding": False, "vr_game": False}
+    chord_box = {"impl": controller_chords.ControllerChords(None), "armed": False}
+    pipes = {}
+
+    def publish_chord_arm():
+        armed = chord_box["impl"].armed
+        if armed == chord_box["armed"]:
+            return
+        chord_box["armed"] = armed
+        sock = pipes.get("screens")
+        if sock is None:
+            return
+        try:
+            sock.sendto(b"chord-click 1" if armed else b"chord-click 0", SCREENS)
+        except OSError:
+            pass
+
+    def drop_chords():
+        chord_box["impl"].clear()
+        publish_chord_arm()
+
+    def install_chords():
+        was = chord_box["armed"]
+        chord_box["impl"] = controller_chords.ControllerChords(state["rules"].get("controller_chords"))
+        chord_box["armed"] = False
+        if was:
+            publish_chord_arm()
 
     def pause_changed(paused):
         """Frametop paused or resumed (game_pause.py): the relay's own part."""
@@ -854,6 +890,7 @@ def main():
                 p.stand_down()
             state["pointer"] = None
             state["desktop_until"] = 0.0  # typing goes to Steam
+            drop_chords()
         else:
             state["pointer"] = p
         apply_roles()
@@ -877,10 +914,12 @@ def main():
             log("pointer mode off: pointer devices feed the virtual mouse and keyboard")
         state["pointer"] = None if pause.paused else state["pointer_conf"]
         pause.configure(state["rules"])
+        install_chords()
 
     load_config()
     tap = None  # the modifier (folded, MODIFIERS) pressed alone, with nothing since: its release is a tap
     screens_sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM | socket.SOCK_NONBLOCK)
+    pipes["screens"] = screens_sock
     last_typing = 0.0  # the helper was last told of a key then (see "typing" at the top)
 
     def vr_bind(now):
@@ -889,9 +928,14 @@ def main():
             buttons = "*"
         else:
             state["vr_capture_until"] = 0.0
-            buttons = " ".join(b for b, a in state["rules"]["controller_buttons"].items()
-                               if b in VR_BUTTONS and known_action(a) and a not in ("key", "none")
-                               and a not in GAZE_ACTIONS and (not pause.paused or works_paused(a))) or "-"
+            chosen = [b for b, a in state["rules"]["controller_buttons"].items()
+                      if b in VR_BUTTONS and known_action(a) and a not in ("key", "none")
+                      and a not in GAZE_ACTIONS and (not pause.paused or works_paused(a))]
+            if not pause.paused and not state.get("vr_game"):
+                for name in chord_box["impl"].bind_names():
+                    if name in VR_BUTTONS and name not in chosen:
+                        chosen.append(name)
+            buttons = " ".join(chosen) or "-"
             if state["rules"].get("controller_in_games"):
                 buttons = "+games " + buttons
         state["vr_bind_retry"] = False
@@ -910,6 +954,12 @@ def main():
             else:
                 reply(addr, {"t": "event", "id": VR_DEVICE, "path": "", "name": "Steam Frame controllers",
                              "type": "vr", "code": button, "value": value})
+        if chord_box["impl"].owns(button):
+            hand = button.split("/")[0]
+            for action_name in chord_box["impl"].event(button, value):
+                do_action(action_name, 1, now, hand)
+            publish_chord_arm()
+            return
         action = state["rules"]["controller_buttons"].get(button)
         if (state["pointer"] or (action and not needs_pointer(action))) and known_action(action) \
                 and action not in ("key", "none") and action not in GAZE_ACTIONS:
@@ -1228,6 +1278,8 @@ def main():
                 node.role = role
         if not waiting and desktop != state["typing_applied"]:
             state["typing_applied"] = desktop
+            if not desktop:
+                drop_chords()
             log(f"typing goes to {'the desktop (keyboards grabbed)' if desktop else 'Steam'}")
         return waiting
 
@@ -1266,12 +1318,23 @@ def main():
                 if cmd == "vrbtn" and len(words) == 3 and words[1] in VR_BUTTONS and words[2] in ("0", "1"):
                     vr_button(words[1], int(words[2]), now)
                     continue
+                if cmd == "chord-fired":
+                    for action_name in chord_box["impl"].click_down():
+                        do_action(action_name, 1, now, "right")
+                    continue
+                if cmd == "chord-released":
+                    chord_box["impl"].click_up()
+                    continue
                 if cmd == "vrhello":
                     vr_bind(now)
                     pause.helper_started()
                     continue
                 if cmd == "vrgame" and len(words) == 2:
-                    pause.game_state(words[1] == "1", now)
+                    state["vr_game"] = words[1] == "1"
+                    pause.game_state(state["vr_game"], now)
+                    if state["vr_game"]:
+                        drop_chords()
+                    vr_bind(now)
                     continue
                 if cmd == "pause" and len(words) >= 2 and words[1] in ("on", "off", "toggle", "?"):
                     # From input/ft-pause, the settings app, or the gesture reader (unbound, no reply).
