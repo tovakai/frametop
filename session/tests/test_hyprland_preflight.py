@@ -122,6 +122,20 @@ class HyprlandPreflightTests(unittest.TestCase):
             ["output create wayland", "output create wayland", "terminal"],
         )
 
+    def test_no_vr_smoke_preflight_rejects_bad_duration(self):
+        script = ROOT / "session" / "hyprland-smoke.sh"
+        result = run(script, self.home, FT_HYPRLAND_SMOKE_SECONDS="0")
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("5..60", result.stderr)
+
+    def test_no_vr_smoke_isolated_sockets(self):
+        source = (ROOT / "session" / "hyprland-smoke.sh").read_text()
+        self.assertIn("--no-vr", source)
+        self.assertIn("ft-hypr-smoke-$", source)
+        self.assertIn("ft_hypr_smoke_$", source)
+        self.assertIn("HYPRLAND_NO_SD_TARGET=1", source)
+        self.assertIn("timeout --signal=TERM", source)
+
 
 if __name__ == "__main__":
     unittest.main()

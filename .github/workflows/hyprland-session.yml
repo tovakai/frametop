@@ -10,6 +10,7 @@ on:
       - 'session/frametop-hyprland.sh'
       - 'session/hyprland-minimal.lua'
       - 'session/hyprland-on-start.sh'
+      - 'session/hyprland-smoke.sh'
       - 'session/tests/test_hyprland_preflight.py'
       - 'screens/compositor.c'
       - '.github/workflows/hyprland-session.yml'
@@ -24,7 +25,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Check session script syntax
-        run: bash -n session/frametop-session.sh session/frametop-hyprland.sh session/hyprland-on-start.sh session/hyprland-doctor.sh
+        run: bash -n session/frametop-session.sh session/frametop-hyprland.sh session/hyprland-on-start.sh session/hyprland-doctor.sh session/hyprland-smoke.sh
       - name: Check Lua config syntax
         run: |
           sudo apt-get update -qq

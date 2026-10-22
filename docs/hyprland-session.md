@@ -36,14 +36,26 @@ floating windows, remote desktop and automatic SteamVR keyboard are bypassed.
    `dnf copr enable sdegler/hyprland` then `dnf install hyprland`.
    Do not enable the COPR automatically or change the SteamOS host root.
    Inspect current dependencies and the chosen repository before installing.
-4. Launch the experimental branch only when you're ready to test. Start with
+4. First run `session/hyprland-smoke.sh` from the branch. It uses
+   `ft-screens --no-vr` on **unique** Wayland/control socket names with an
+   isolated Hyprland runtime and auto-exits after 15 seconds. It never
+   registers SteamVR panels. The test is still unvalidated on the Frame;
+   use SSH to capture its output and check for Wayland bind failures,
+   `screen 1: commit`, and any DMA-BUF errors. To exercise extra
+   outputs without VR, set `FT_SCREEN_COUNT=2`.
+5. Launch the experimental branch only when you're ready to test. Start with
    `FT_DESKTOP_SESSION=hyprland FT_SCREEN_COUNT=1` on a disposable
    test session and verify a single panel renders and accepts input.
    The branch currently has no separate Steam launcher: the caller must
    explicitly select the branch's session script rather than running the
    installed one. Do not symlink this branch over the active installation.
-5. Collect session logs and `/tmp/frametop-screens.log`; check SteamVR
+6. Collect session logs and `/tmp/frametop-screens.log`; check SteamVR
    frame timing and Plasma fallback before expanding to multiple outputs.
+
+The smoke harness may start Frametop's container and will create temporary
+runtime paths; it does **not** stop or modify the existing Frametop process.
+It verifies host protocol negotiation and surface commits but **cannot**
+validate SteamVR buffer import, panel rendering or controller interaction.
 
 ## Session mechanics
 
