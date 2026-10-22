@@ -7,36 +7,25 @@ set -euo pipefail
 here=$(dirname "$(readlink -f "$0")")
 action=${1:-}
 
-run_app() {
-  local cmd=$1
-  if [ "${FT_DESKTOP_FOREGROUND:-}" = 1 ]; then
-    # shellcheck disable=SC2086
-    ${cmd}
-    return
-  fi
-  # shellcheck disable=SC2086
-  ${cmd} &
+# This Hyprland is configured in Lua. `hyprctl dispatch workspace r+1` is parsed
+# as Lua and rejected. hl.dispatch is the call that actually runs.
+hypr_eval() {
+  hyprctl eval "$1"
 }
 
 launch_first() {
-  local user_script=${XDG_CONFIG_HOME:-}/hypr/hyprland/scripts/launch_first_available.sh
-  if [ -x "$user_script" ]; then
-    if [ "${FT_DESKTOP_FOREGROUND:-}" = 1 ]; then
-      "$user_script" "$@"
-    else
-      "$user_script" "$@" &
-    fi
-    return
-  fi
   local cmd
   for cmd in "$@"; do
     [ -n "$cmd" ] || continue
     # shellcheck disable=SC2086
     command -v ${cmd%% *} >/dev/null 2>&1 || continue
-    run_app "$cmd"
+    # Hyprland owns the process. A program started by this short-lived
+    # container command would exit with it.
+    hypr_eval "hl.dispatch(hl.dsp.exec_cmd(\"$cmd\"))"
     return
   done
   echo "frametop: none of these commands are installed: $*" >&2
+  hypr_eval "hl.dispatch(hl.dsp.exec_cmd(\"foot $here/frame-missing.sh $action $*\"))"
 }
 
 if [ "${FT_DESKTOP_INNER:-}" != 1 ]; then
@@ -62,11 +51,11 @@ if [ "${FT_DESKTOP_INNER:-}" != 1 ]; then
 fi
 
 case $action in
-  workspace-prev) hyprctl dispatch workspace r-1 ;;
-  workspace-next) hyprctl dispatch workspace r+1 ;;
-  window-prev) hyprctl dispatch movetoworkspacesilent r-1 ;;
-  window-next) hyprctl dispatch movetoworkspacesilent r+1 ;;
-  close) hyprctl dispatch closewindow ;;
+  workspace-prev) hypr_eval 'hl.dispatch(hl.dsp.focus({ workspace = "r-1" }))' ;;
+  workspace-next) hypr_eval 'hl.dispatch(hl.dsp.focus({ workspace = "r+1" }))' ;;
+  window-prev) hypr_eval 'hl.dispatch(hl.dsp.window.move({ workspace = "r-1", follow = false }))' ;;
+  window-next) hypr_eval 'hl.dispatch(hl.dsp.window.move({ workspace = "r+1", follow = false }))' ;;
+  close) hypr_eval 'hl.dispatch(hl.dsp.window.close())' ;;
   terminal)
     launch_first foot kitty alacritty wezterm konsole kgx uxterm xterm
     ;;

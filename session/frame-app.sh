@@ -7,6 +7,8 @@ action=${1:-}
 say() { echo "frametop: $*" >&2; }
 
 launch_first() {
+    here=$(dirname "$(readlink -f "$0")")
+    looked=$*
     for spec in "$@"; do
         # shellcheck disable=SC2086
         set -- $spec
@@ -14,8 +16,9 @@ launch_first() {
             exec "$@"
         fi
     done
-    say "nothing installed for $action"
-    exit 1
+    say "nothing installed for $action ($looked)"
+    # shellcheck disable=SC2086
+    exec foot "$here/frame-missing.sh" "$action" $looked
 }
 
 case "$action" in

@@ -147,11 +147,11 @@ class FrameDesktopTests(unittest.TestCase):
                 PATH=str(bindir) + os.pathsep + "/usr/bin:/bin",
             )
             expected = {
-                "workspace-prev": "dispatch workspace r-1",
-                "workspace-next": "dispatch workspace r+1",
-                "window-prev": "dispatch movetoworkspacesilent r-1",
-                "window-next": "dispatch movetoworkspacesilent r+1",
-                "close": "dispatch closewindow",
+                "workspace-prev": 'workspace = "r-1"',
+                "workspace-next": 'workspace = "r+1"',
+                "window-prev": 'workspace = "r-1", follow = false',
+                "window-next": 'workspace = "r+1", follow = false',
+                "close": "window.close",
                 "terminal": None,
                 "files": None,
                 "browser": None,
