@@ -114,7 +114,7 @@ frame_scheme_for_image() {
 }
 
 frame_write_matugen_config() {
-  local dest=$1 state_dir=$2 app_config=$3
+  local dest=$1 state_dir=$2 app_config=$3 colors_out=$4
   local templates=$FT_FRAME_SESSION/matugen/templates
   cat > "$dest" <<EOF
 [config]
@@ -122,7 +122,7 @@ version_check = false
 
 [templates.m3colors]
 input_path = '$templates/colors.json'
-output_path = '$state_dir/user/generated/colors.json'
+output_path = '$colors_out'
 
 [templates.gtk3]
 input_path = '$templates/gtk-3.0/gtk.css'
@@ -164,9 +164,11 @@ frame_recolor() {
     echo "frametop: matugen templates are not in this session" >&2
     return 1
   fi
-  mkdir -p "$state_dir/user/generated" "$app_config/gtk-3.0" "$app_config/gtk-4.0" "$app_data"
+  mkdir -p "$state_dir/user/generated/incoming" "$app_config/gtk-3.0" "$app_config/gtk-4.0" "$app_data"
+  local live=$state_dir/user/generated/colors.json
+  local staged=$state_dir/user/generated/incoming/colors.json
   cfg=$(mktemp)
-  frame_write_matugen_config "$cfg" "$state_dir" "$app_config"
+  frame_write_matugen_config "$cfg" "$state_dir" "$app_config" "$staged"
   if [ -n "${FT_MATUGEN_CONFIG_COPY:-}" ]; then
     cp "$cfg" "$FT_MATUGEN_CONFIG_COPY"
   fi
@@ -192,10 +194,18 @@ frame_recolor() {
     prev=""
   done
   if ! matugen --config "$cfg" "${args[@]}"; then
-    rm -f "$cfg"
+    rm -f "$cfg" "$staged"
     return 1
   fi
   rm -f "$cfg"
+  # Quickshell watches this inode. Replacing the file leaves that watch on
+  # the old one, so a new wallpaper would not repaint the shell.
+  if [ -e "$live" ]; then
+    cat "$staged" > "$live"
+    rm -f "$staged"
+  else
+    mv "$staged" "$live"
+  fi
   py=$(frame_color_venv)/bin/python
   if [ -x "$py" ] && [ -n "${SCRIPT_DIR:-}" ] && [ -f "$SCRIPT_DIR/generate_colors_material.py" ]; then
     "$py" "$SCRIPT_DIR/generate_colors_material.py" ${generate_colors_material_args[@]+"${generate_colors_material_args[@]}"} \
