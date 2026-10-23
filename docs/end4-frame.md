@@ -22,7 +22,7 @@ icon widget uses Qt's own renderer while `FT_FRAME_SESSION` is set. Building
 | ImageMagick, `ffmpeg-free` | Wallpaper probes and video wallpapers | ImageMagick was already installed; `ffmpeg-free` is added |
 | `python3-pillow` | Image helpers under `scripts/` | Install in the container |
 | `qalc` (`qalculate`) | Calculator in the launcher | Install in the container |
-| `cliphist`, `wl-paste` | Clipboard history | Install `cliphist`. The session runs `wl-paste --watch cliphist store` on its own Wayland socket |
+| `cliphist`, `wl-paste` | Clipboard history | Install `cliphist`. Startup stores one blank entry (`cliphist list` exits 1 on an empty database) and then runs `wl-paste --watch cliphist store` on this session's Wayland socket |
 | `grim`, `slurp` | Region screenshots | Install in the container |
 | `libnotify` | `notify-send` from scripts | Install in the container. The shell is the notification server on the session bus |
 | `playerctl` | A few media fallbacks | Install in the container. Playback itself is MPRIS on the session bus |
@@ -82,7 +82,7 @@ and hypridle stay out of the session launcher.
 
 | Laptop piece | Frame |
 | --- | --- |
-| ChatGPT bridge at `/home/tovakai/Projects/quickshell-chatgpt` | Not started. The venv is not on the headset, and it is not copied |
+| ChatGPT bridge at `/home/tovakai/Projects/quickshell-chatgpt` | Not started. The staged command is `/usr/bin/bash` and exits immediately when `FT_FRAME_SESSION` is set. The venv is not copied |
 | Conflict killer (`killall kded6`) | Returns before doing anything when `FT_FRAME_SESSION` is set |
 | Monitor brightness, DDC, suspend | No-ops or hidden |
 | Host Plasma session bus | Not imported. The nested session has its own bus |
