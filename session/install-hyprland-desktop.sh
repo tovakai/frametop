@@ -207,7 +207,7 @@ if ! "$home/.local/bin/frametop-desktop" use hyprland; then
   exit 1
 fi
 ok=0
-for _ in $(seq 50); do
+for _ in $(seq 150); do
   if [ -S "$XDG_RUNTIME_DIR/ft-hyprland-0" ]; then ok=1; break; fi
   sleep 0.2
 done
