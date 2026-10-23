@@ -176,7 +176,22 @@ frame_recolor() {
     rm -f "$cfg"
     return 1
   fi
-  if ! matugen --config "$cfg" "$@"; then
+  # The shell passes --source-color-index. Fedora's matugen 3.1 rejects it
+  # and then no colors are written, so the desktop stays on the old theme.
+  local args=() prev="" arg
+  for arg in "$@"; do
+    if [ "$prev" = "--source-color-index" ]; then
+      prev=""
+      continue
+    fi
+    if [ "$arg" = "--source-color-index" ]; then
+      prev=$arg
+      continue
+    fi
+    args+=("$arg")
+    prev=""
+  done
+  if ! matugen --config "$cfg" "${args[@]}"; then
     rm -f "$cfg"
     return 1
   fi

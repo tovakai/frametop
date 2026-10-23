@@ -54,6 +54,8 @@ with `QT_QPA_PLATFORMTHEME=kde`. Host Plasma keeps `~/.config`.
 
 A wallpaper change runs `matugen` from the container (Fedora's 3.1.0 build;
 it accepts the same templates and scheme names as the laptop's 4.2.0).
+The shell also passes `--source-color-index`, which this build rejects, so
+the session drops that flag before generating colors.
 `session/frame-wallpaper.sh` writes a config whose outputs are the session
 state `colors.json` and GTK css under `~/.config/frametop/hyprland`. It
 does not use the laptop's `~/.config/matugen/config.toml`, because those

@@ -178,15 +178,16 @@ class FrameWallpaperTests(unittest.TestCase):
                 "out=$(sed -n \"s/.*output_path = '\\(.*colors.json\\)'.*/\\1/p\" \"$cfg\")\n"
                 "mkdir -p \"$(dirname \"$out\")\"\n"
                 "printf '%s\\n' '{\"surface\":\"#112233\",\"on_surface\":\"#eeeeee\",\"primary\":\"#abcdef\"}' > \"$out\"\n"
-                "cp \"$cfg\" \"$FT_MATUGEN_LOG\"\n"
+                "printf '%s\\n' \"$*\" > \"$FT_MATUGEN_LOG\"\n"
             )
             path = bindir / "matugen"
             path.chmod(path.stat().st_mode | stat.S_IEXEC)
             state = root / "state"
             app_config = root / ".config" / "frametop" / "hyprland"
             copied = root / "matugen.toml"
+            args_log = root / "matugen.args"
             result = _bash(
-                f'. "{HELPER}"\nframe_recolor image "{root}/wall.png" --mode dark --type scheme-tonal-spot\n',
+                f'. "{HELPER}"\nframe_recolor --source-color-index 0 image "{root}/wall.png" --mode dark --type scheme-tonal-spot\n',
                 {
                     "PATH": f"{bindir}:/usr/bin:/bin",
                     "HOME": str(root),
@@ -195,7 +196,7 @@ class FrameWallpaperTests(unittest.TestCase):
                     "FT_APP_DATA_HOME": str(root / "data"),
                     "FT_FRAME_SESSION": str(ROOT / "session"),
                     "FT_MATUGEN_CONFIG_COPY": str(copied),
-                    "FT_MATUGEN_LOG": str(copied),
+                    "FT_MATUGEN_LOG": str(args_log),
                 },
             )
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -207,6 +208,8 @@ class FrameWallpaperTests(unittest.TestCase):
             config = copied.read_text()
             self.assertIn(str(app_config / "gtk-3.0" / "gtk.css"), config)
             self.assertNotIn(str(root / ".config" / "gtk-3.0"), config)
+            self.assertNotIn("source-color-index", args_log.read_text())
+            self.assertIn("scheme-tonal-spot", args_log.read_text())
             refused = _bash(
                 f'. "{HELPER}"\nframe_recolor image "{root}/wall.png"\n',
                 {
