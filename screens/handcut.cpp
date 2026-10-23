@@ -325,6 +325,57 @@ uniform samplerExternalOES tex;
 varying vec2 uv;
 void main() { gl_FragColor = vec4(texture2D(tex, uv).rgb, 1.0); })";
 
+// Diagnostic stereo shader. Brightness is used as FAKE depth for a live pipeline
+// test, not a learned or geometrically correct depth map. Never imply that this
+// reconstructs true scene geometry. Each eye has independent horizontal samples.
+const char *kStereo = R"(
+#extension GL_OES_EGL_image_external : require
+precision highp float;
+uniform samplerExternalOES tex;
+uniform float strength;
+uniform float convergence;
+uniform float eyeSign;
+uniform float calibration;
+uniform float eyeIndex;
+varying vec2 uv;
+void main() {
+    if (calibration > 0.5) {
+        // Optical alignment target. The imported texture is a stationary,
+        // zero-disparity grid. Near orange and far cyan geometry use known
+        // offsets, so this tests stereoscopy rather than guessed luminance.
+        vec3 color = texture2D(tex, uv).rgb;
+
+        // Unshifted yellow crosshair: physical panel/screen reference plane.
+        if ((abs(uv.x - 0.5) < 0.0015 && abs(uv.y - 0.5) < 0.30) ||
+            (abs(uv.y - 0.5) < 0.0025 && abs(uv.x - 0.5) < 0.37))
+            color = vec3(0.9, 0.83, 0.20);
+
+        // Far: uncrossed disparity. Draw first so Near can occlude it.
+        vec2 behind = uv - vec2(eyeSign * strength * 0.6, 0.0);
+        if (distance(behind, vec2(0.60, 0.50)) < 0.165)
+            color = vec3(0.14, 0.77, 0.94);
+
+        // Near: crossed disparity, a square visibly in front of the grid.
+        vec2 inFront = uv + vec2(eyeSign * strength, 0.0);
+        if (max(abs(inFront.x - 0.43), abs(inFront.y - 0.50)) < 0.125)
+            color = vec3(1.0, 0.42, 0.10);
+
+        // Small eye-order markers: LEFT eye gets red, RIGHT gets blue.
+        // Cover each eye in turn to confirm SBS ordering. No rivalry
+        // elsewhere in the frame, and eye swapping changes disparity only.
+        if (uv.x > 0.025 && uv.x < 0.060 && uv.y > 0.90 && uv.y < 0.955)
+            color = eyeIndex < 0.5 ? vec3(1.0, 0.15, 0.18) : vec3(0.15, 0.45, 1.0);
+        gl_FragColor = vec4(color, 1.0);
+        return;
+    }
+    // Production-preview placeholder: brightness is FAKE depth, not geometry.
+    vec3 source = texture2D(tex, uv).rgb;
+    float fakeDepth = dot(source, vec3(0.299, 0.587, 0.114));
+    float delta = eyeSign * strength * (fakeDepth - convergence);
+    vec2 sampleUV = vec2(clamp(uv.x - delta, 0.0, 1.0), uv.y);
+    gl_FragColor = vec4(texture2D(tex, sampleUV).rgb, 1.0);
+})";
+
 // Coverage of one tapered capsule; blended to take that much alpha away.
 const char *kCut = R"(
 precision highp float;
@@ -457,9 +508,11 @@ bool Renderer::Init(const std::vector<uint64_t> &modifiers, std::function<void(c
         return std::fprintf(stderr, "handcut: no surfaceless GLES context\n"), false;
     ctx_ = ctx;
     copyProg_ = Program(kCopy);
+    stereoProg_ = Program(kStereo);
     cutProg_ = Program(kCut);
     markProg_ = Program(kMark);
     if (!copyProg_ || !cutProg_ || !markProg_) return false;
+    if (!stereoProg_) std::fprintf(stderr, "handcut: stereo preview shader unavailable; hand cutouts still supported\n");
     const float quad[] = {0, 0, 1, 0, 0, 1, 1, 1};
     glGenBuffers(1, &vbo_);
     glBindBuffer(GL_ARRAY_BUFFER, vbo_);
@@ -593,7 +646,8 @@ bool Renderer::Passed(Output &o, int64_t timeoutNs) {
 
 // Draws one buffer. Partial: the buffer holds this client frame already, with o.spots cut
 // out, so each eye is drawn again only inside the box around those and the new cutouts.
-void Renderer::Draw(Output &o, unsigned tex, int w, int h, const std::vector<Capsule2D> eyes[2], bool partial) {
+void Renderer::Draw(Output &o, unsigned tex, int w, int h, const std::vector<Capsule2D> eyes[2],
+                    const ft_stereo::Preview &preview, bool partial) {
     glBindFramebuffer(GL_FRAMEBUFFER, o.fbo);
     glBindBuffer(GL_ARRAY_BUFFER, vbo_);
     glEnableVertexAttribArray(0);
@@ -617,12 +671,21 @@ void Renderer::Draw(Output &o, unsigned tex, int w, int h, const std::vector<Cap
         }
         glViewport(e * w, 0, w, h);
         glDisable(GL_BLEND);
-        glUseProgram(copyProg_);
+        const GLuint program = ft_stereo::enabled(preview) ? stereoProg_ : copyProg_;
+        glUseProgram(program);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_EXTERNAL_OES, tex);
-        glUniform1i(glGetUniformLocation(copyProg_, "tex"), 0);
-        glUniform4f(glGetUniformLocation(copyProg_, "rect"), 0, 0, float(w), float(h));
-        glUniform2f(glGetUniformLocation(copyProg_, "size"), float(w), float(h));
+        glUniform1i(glGetUniformLocation(program, "tex"), 0);
+        glUniform4f(glGetUniformLocation(program, "rect"), 0, 0, float(w), float(h));
+        glUniform2f(glGetUniformLocation(program, "size"), float(w), float(h));
+        if (ft_stereo::enabled(preview)) {
+            glUniform1f(glGetUniformLocation(program, "strength"), preview.strength);
+            glUniform1f(glGetUniformLocation(program, "convergence"), preview.convergence);
+            const float eyeSign = (e == 0 ? -0.5f : 0.5f) * (preview.swap ? -1.0f : 1.0f);
+            glUniform1f(glGetUniformLocation(program, "eyeSign"), eyeSign);
+            glUniform1f(glGetUniformLocation(program, "calibration"), preview.calibration ? 1.0f : 0.0f);
+            glUniform1f(glGetUniformLocation(program, "eyeIndex"), float(e));
+        }
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         // take alpha away where the hand is; the colour stays (straight alpha)
         glEnable(GL_BLEND);
@@ -648,7 +711,7 @@ void Renderer::Draw(Output &o, unsigned tex, int w, int h, const std::vector<Cap
 }
 
 const Output *Renderer::Composite(int panel, const void *key, uint64_t serial, const ft_dmabuf &src,
-                                  const std::vector<Capsule2D> eyes[2]) {
+                                  const std::vector<Capsule2D> eyes[2], const ft_stereo::Preview &preview) {
     if (!ready_) return nullptr;
     const int64_t t0 = SteadyNs();
     const int w = src.width, h = src.height;
@@ -667,7 +730,7 @@ const Output *Renderer::Composite(int panel, const void *key, uint64_t serial, c
 
     const int newest = ring.drawing >= 0 ? ring.drawing : ring.shown;
     const Output *n = newest >= 0 ? &ring.out[newest] : nullptr;
-    if (n && n->key == key && n->serial == serial && SameSpots(n->spots, eyes)) {
+    if (n && n->key == key && n->serial == serial && ft_stereo::same(n->preview, preview) && SameSpots(n->spots, eyes)) {
         ++stats_.same;
     } else if (ring.drawing >= 0) {
         ++stats_.busy;   // drawn on a later tick, from what's current then
@@ -678,12 +741,14 @@ const Output *Renderer::Composite(int panel, const void *key, uint64_t serial, c
         if (!o.bo && !MakeOutput(o, 2 * w, h)) return nullptr;
         const GLuint tex = Texture(key, src);
         if (!tex) return nullptr;
-        const bool partial = o.drawn && o.key == key && o.serial == serial;
-        Draw(o, tex, w, h, eyes, partial);
+        const bool partial = o.drawn && o.key == key && o.serial == serial &&
+                             ft_stereo::same(o.preview, preview);
+        Draw(o, tex, w, h, eyes, preview, partial);
         o.fence = pCreateSync(EGLDisplay(dpy_), EGL_SYNC_FENCE_KHR, nullptr);
         glFlush();
         if (!o.fence) glFinish();   // no fence: wait here, as before
         o.key = key, o.serial = serial, o.drawn = true;
+        o.preview = preview;
         for (int e = 0; e < 2; ++e) o.spots[e] = eyes[e];
         ring.drawing = i;
         ++stats_.draws, stats_.partial += partial;

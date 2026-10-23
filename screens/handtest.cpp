@@ -3,10 +3,16 @@
 // in front of it, each eye sees through it, like ft-screens' screens with cutouts.
 //
 //   ft-handtest [--distance m] [--width m] [--seconds s]
+//   ft-handtest --stereo-preview [--stereo-strength 0.006] [--seconds 20]
+//   ft-handtest --stereo-preview --stereo-luminance  # old fake-depth checker
+//   ft-handtest --ppm /home/steamos/Pictures/desktop.ppm --seconds 20
+// --ppm loads a STATIC desktop snapshot, not an ongoing screen recording.
+// The preview draws ONE temporary overlay; it never restarts the desktop.
 //
-// Needs hand tracking running (hands/run.sh; ft-hands publishes /run/user/UID/frametop-hands/hands).
+// The hand-cutout test needs ft-hands; --stereo-preview does NOT need tracking.
 // Build: screens/build.sh (build/ft-handtest), run in the dev container.
 #include "handcut.h"
+#include "stereo-image.h"
 
 #include <drm_fourcc.h>
 #include <fcntl.h>
@@ -52,8 +58,12 @@ vr::SharedTextureHandle_t Import(const ft_dmabuf &b) {
     return h;
 }
 
-// The stand-in "client" buffer: a light grey grid, linear so the CPU can draw it.
-bool TestPattern(int drm, int w, int h, gbm_bo **out, ft_dmabuf *b) {
+// Stand-in client buffer, also used by the isolated stereo calibration target.
+// In calibration mode the GRID itself stays at the panel's zero-disparity plane;
+// the GPU overlays independently shifted near/far objects.
+bool TestPattern(int drm, int w, int h, gbm_bo **out, ft_dmabuf *b,
+                 bool stereoCalibration = false, bool luminanceChecker = false,
+                 const ft_stereo_image::Image *snapshot = nullptr) {
     gbm_device *gbm = gbm_create_device(drm);
     gbm_bo *bo = gbm_bo_create(gbm, w, h, GBM_FORMAT_ABGR8888, GBM_BO_USE_LINEAR | GBM_BO_USE_RENDERING);
     if (!bo) return false;
@@ -64,9 +74,26 @@ bool TestPattern(int drm, int w, int h, gbm_bo **out, ft_dmabuf *b) {
     for (int y = 0; y < h; ++y)
         for (int x = 0; x < w; ++x) {
             uint8_t *p = px + size_t(y) * stride + size_t(x) * 4;
-            const bool line = x % 80 < 3 || y % 80 < 3;
-            const uint8_t g = line ? 90 : uint8_t(200 + 30 * x / w);
-            p[0] = g, p[1] = g, p[2] = uint8_t(line ? 160 : g), p[3] = 255;
+            if (snapshot) {
+                const uint8_t *rgb = snapshot->rgb.data() + (size_t(y) * w + x) * 3;
+                // GBM_FORMAT_ABGR8888 in little-endian memory is R,G,B,A.
+                p[0] = rgb[0], p[1] = rgb[1], p[2] = rgb[2], p[3] = 255;
+            } else if (stereoCalibration) {
+                // Unshifted background grid. Explicit near/far objects are
+                // rendered analytically by the stereo shader.
+                const bool line = x % 100 < 2 || y % 100 < 2;
+                const uint8_t gray = line ? 92 : 36;
+                p[0] = gray, p[1] = gray, p[2] = gray, p[3] = 255;
+            } else if (luminanceChecker) {
+                // Original fake-depth checker for comparing the two modes.
+                const bool line = x % 200 < 3 || y % 180 < 3;
+                const uint8_t gray = line ? 128 : (((x / 200 + y / 180) & 1) ? 42 : 228);
+                p[0] = gray, p[1] = gray, p[2] = gray, p[3] = 255;
+            } else {
+                const bool line = x % 80 < 3 || y % 80 < 3;
+                const uint8_t g = line ? 90 : uint8_t(200 + 30 * x / w);
+                p[0] = g, p[1] = g, p[2] = uint8_t(line ? 160 : g), p[3] = 255;
+            }
         }
     gbm_bo_unmap(bo, data);
     *b = {};
@@ -201,11 +228,34 @@ int RunProbe(vr::VROverlayHandle_t ov, const handcut::Panel &panel, handcut::Ren
 
 int main(int argc, char **argv) {
     double distance = 0.8, width = 1.0, seconds = 0, leadMs = -1, dotMm = 3;
-    bool probe = false;
+    double stereoStrength = 0.006, stereoConvergence = 0.5;
+    bool probe = false, stereoPreview = false, stereoSwap = false, stereoLuminance = false;
+    std::string ppmPath;
     std::string logPath = "/tmp/handprobe-" + std::to_string(time(nullptr)) + ".jsonl";
     for (int i = 1; i < argc; ++i) {
         const bool more = i + 1 < argc;
         if (!std::strcmp(argv[i], "--probe")) probe = true;
+        else if (!std::strcmp(argv[i], "--stereo-preview")) stereoPreview = true;
+        else if (!std::strcmp(argv[i], "--stereo-swap")) stereoPreview = stereoSwap = true;
+        else if (!std::strcmp(argv[i], "--stereo-luminance")) stereoPreview = stereoLuminance = true;
+        else if (!std::strcmp(argv[i], "--ppm") && more) {
+            stereoPreview = stereoLuminance = true;
+            ppmPath = argv[++i];
+        }
+        else if (!std::strcmp(argv[i], "--stereo-strength") && more) {
+            stereoPreview = true;
+            char *end = nullptr;
+            stereoStrength = std::strtod(argv[++i], &end);
+            if (!end || end == argv[i] || *end != '\0')
+                return std::fprintf(stderr, "invalid --stereo-strength\n"), 2;
+        }
+        else if (!std::strcmp(argv[i], "--stereo-convergence") && more) {
+            stereoPreview = true;
+            char *end = nullptr;
+            stereoConvergence = std::strtod(argv[++i], &end);
+            if (!end || end == argv[i] || *end != '\0')
+                return std::fprintf(stderr, "invalid --stereo-convergence\n"), 2;
+        }
         else if (!std::strcmp(argv[i], "--distance") && more) distance = std::atof(argv[++i]);
         else if (!std::strcmp(argv[i], "--width") && more) width = std::atof(argv[++i]);
         else if (!std::strcmp(argv[i], "--seconds") && more) seconds = std::atof(argv[++i]);
@@ -213,8 +263,32 @@ int main(int argc, char **argv) {
         else if (!std::strcmp(argv[i], "--dot-mm") && more) dotMm = std::atof(argv[++i]);
         else if (!std::strcmp(argv[i], "--log") && more) logPath = argv[++i];
         else return std::fprintf(stderr, "usage: ft-handtest [--distance m] [--width m] [--seconds s] "
-                                         "[--probe [--lead ms] [--dot-mm mm] [--log FILE]]\n"), 2;
+                                         "[--probe [--lead ms] [--dot-mm mm] [--log FILE]] "
+                                         "[--stereo-preview [--stereo-strength 0..0.03] "
+                                         "[--stereo-convergence 0..1] [--stereo-swap] "
+                                         "[--stereo-luminance] [--ppm FILE.ppm]]\n"), 2;
     }
+    // A timed overlay on a running SteamVR instance is safer than replacing a
+    // desktop compositor. Even a lost terminal cannot leave this test forever.
+    if (stereoPreview) {
+        if (probe) return std::fprintf(stderr, "--probe and --stereo-preview are exclusive\n"), 2;
+        if (!ft_stereo::valid(stereoStrength, stereoConvergence, stereoSwap ? 1 : 0))
+            return std::fprintf(stderr, "invalid stereo settings\n"), 2;
+        if (!std::isfinite(seconds) || seconds < 0 || seconds > 60)
+            return std::fprintf(stderr, "stereo preview duration must be 0..60 seconds\n"), 2;
+        if (seconds == 0) seconds = 20;   // auto-clean up without Ctrl+C
+    }
+    // Fail before touching OpenVR if the snapshot is malformed or oversized.
+    ft_stereo_image::Image snapshot;
+    if (!ppmPath.empty()) {
+        std::string error;
+        if (!ft_stereo_image::Load(ppmPath, snapshot, error))
+            return std::fprintf(stderr, "stereo snapshot: %s\n", error.c_str()), 2;
+        if (probe) return std::fprintf(stderr, "--probe and --ppm are exclusive\n"), 2;
+    }
+    const ft_stereo::Preview stereo = stereoPreview
+        ? ft_stereo::Preview{float(stereoStrength), float(stereoConvergence), stereoSwap, !stereoLuminance}
+        : ft_stereo::Preview{};
     signal(SIGINT, Stop);
     signal(SIGTERM, Stop);
 
@@ -237,17 +311,24 @@ int main(int argc, char **argv) {
             if (it != imports.end()) vr::VRIPCResourceManager()->UnrefResource(it->second), imports.erase(it);
         }))
         return 1;
+    if (stereoPreview && !renderer.SupportsStereo())
+        return std::fprintf(stderr, "stereo preview shader unavailable\n"), 1;
 
-    const int W = 1600, H = 900;
+    const int W = snapshot.width > 0 ? snapshot.width : 1600;
+    const int H = snapshot.height > 0 ? snapshot.height : 900;
     const int drm = open("/dev/dri/renderD128", O_RDWR | O_CLOEXEC);
     gbm_bo *bo = nullptr;
     ft_dmabuf client;
-    if (drm < 0 || !TestPattern(drm, W, H, &bo, &client)) return std::fprintf(stderr, "can't make the test pattern\n"), 1;
+    if (drm < 0 || !TestPattern(drm, W, H, &bo, &client,
+                                stereoPreview && !stereoLuminance, stereoPreview && stereoLuminance,
+                                snapshot.width > 0 ? &snapshot : nullptr)) return std::fprintf(stderr, "can't make the test pattern\n"), 1;
     const vr::SharedTextureHandle_t plain = Import(client);
     if (!plain) return std::fprintf(stderr, "SteamVR can't import the test pattern\n"), 1;
 
     vr::VROverlayHandle_t ov;
-    if (vr::VROverlay()->CreateOverlay("frametop.handtest", "Hand cutout test", &ov) != vr::VROverlayError_None)
+    if (vr::VROverlay()->CreateOverlay(stereoPreview ? "frametop.stereo-smoke" : "frametop.handtest",
+                                      stereoPreview ? "Frametop stereo smoke test" : "Hand cutout test",
+                                      &ov) != vr::VROverlayError_None)
         return std::fprintf(stderr, "can't create the overlay (already running?)\n"), 1;
     vr::VROverlay()->SetOverlayWidthInMeters(ov, float(width));
 
@@ -282,6 +363,17 @@ int main(int argc, char **argv) {
     vr::VROverlay()->SetOverlayTexture(ov, &tex);
     vr::VROverlay()->ShowOverlay(ov);
     std::printf("test panel %.2f m wide, %.2f m ahead; Ctrl+C to stop\n", width, distance);
+    if (stereoPreview)
+        std::printf("STEREO SMOKE %s: %.4f strength, %.2f convergence, swap %d; %.0f sec maximum\n",
+                    stereoLuminance ? "luminance checker" : "calibrated near/far", stereoStrength,
+                    stereoConvergence, stereoSwap ? 1 : 0, seconds);
+    if (stereoPreview && !stereoLuminance)
+        std::printf("ORANGE square should float in front of the grid, CYAN circle behind it.\n"
+                    "Cover each eye: LEFT sees red marker, RIGHT sees blue marker.\n"
+                    "Try --stereo-strength 0 for the same scene without disparity.\n");
+    if (snapshot.width > 0)
+        std::printf("STATIC PPM snapshot %s (%dx%d); luminance-derived FAKE depth, not AI.\n",
+                    ppmPath.c_str(), W, H);
 
     handcut::Hands hands;
     bool cutting = false;
@@ -302,7 +394,8 @@ int main(int argc, char **argv) {
             handcut::EyePositions(head, eyes);
             cut = handcut::Project(panel, hands.capsules(), eyes, eyes2d);
         }
-        const handcut::Output *out = cut ? renderer.Composite(0, bo, 1, client, eyes2d) : nullptr;
+        const handcut::Output *out = (cut || stereoPreview)
+            ? renderer.Composite(0, bo, 1, client, eyes2d, stereo) : nullptr;
         if (out) {
             auto it = imports.find(out);
             if (it == imports.end()) {

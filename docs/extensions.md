@@ -18,7 +18,7 @@ ext api
   ok 1
 
 ext caps
-  ok screen.status screen.opacity screen.move
+  ok screen.status screen.opacity screen.move screen.stereo.preview
 ```
 
 Version 1 adds commands without changing existing `place`, `get`, `pin`,
@@ -63,6 +63,169 @@ ext move N X Y Z YAW PITCH ROLL MILLISECONDS
 - These are **runtime overrides**. They do not silently modify layout/profile
   files, and they reset when `ft-screens` restarts. A profile extension must
   implement its own persistence and replay.
+
+## Experimental stereo preview (FrameDepth pipeline check)
+
+The optional `screen.stereo.preview` capability is an **opt-in diagnostic**, not
+depth estimation or a production stereo API. It synthesizes fake depth from the
+client image's luminance, then samples two horizontally shifted eye views with
+the existing GPU/DMA-BUF cutout renderer. The same renderer preserves tracked
+hand cutouts and has only one owner of the overlay texture and OpenVR SBS flags.
+It applies to **local desktop screens only**, not float or remote panels.
+
+```text
+ext stereo-preview N state
+  ok on|off strength STRENGTH convergence CONVERGENCE swap 0|1 mode luminance
+
+ext stereo-preview N on STRENGTH CONVERGENCE SWAP
+  ok
+
+ext stereo-preview N off
+  ok
+```
+
+- `STRENGTH`: 0..0.03 in normalized source-image width, with 0 disabling it.
+  Start with 0.006. The renderer applies half the signed shift in each eye.
+- `CONVERGENCE`: 0..1 image luminance interpreted as zero-disparity plane.
+- `SWAP`: 0 or 1, reverses which eye receives which horizontal displacement.
+- No persistent settings: disabling or restarting restores plain 2D.
+- A client buffer remains owned by Frametop; the compositor imports it and
+  hands the GPU-finished SBS texture to SteamVR. The extension gets **no raw
+  image access** through this command and cannot inject a depth map yet.
+- The cutout renderer is initialized lazily. If initialization or import fails,
+  the ordinary 2D texture remains or is restored. The first GPU fence can
+  block briefly, as with hand cutouts today.
+
+This first slice is a **live stereo-composition integration test** for
+independently installed extensions. A future depth worker needs a separate,
+versioned capability for safe, synchronized depth-map transport; this
+capability must not be renamed to imply arbitrary depth maps are supported.
+
+## Safe first headset test (no desktop replacement)
+
+**Do not start the whole experimental desktop for this smoke test.** On
+2026-10-19, compiling the experimental branch and starting it as an entire
+desktop led to a black display that recovered only after SteamVR restarted.
+We have not determined why; the isolated test avoids repeating that operation.
+
+The existing `ft-handtest` tool now accepts `--stereo-preview`. It draws a
+temporary high-contrast checker pattern in its **own** SteamVR overlay, using
+the *same* GPU renderer and SBS code as the screen compositor. It does not
+install files, replace the running Frametop compositor, change its control
+socket, restart SteamVR or require `ft-hands`.
+
+On the Steam Frame, with the working VR environment already running:
+
+```sh
+cd ~/frametop-stereo-test
+git pull --ff-only
+./screens/build.sh
+./scripts/frame.sh -C screens './build/ft-handtest --stereo-preview --seconds 20'
+```
+
+The test is bounded to **20 seconds** by default (maximum 60), and closing
+the process with Ctrl+C removes its overlay immediately. The default strength
+is now **0.006** (not the earlier barely-visible 0.003), convergence 0.5.
+Optional flags: `--stereo-strength X`, `--stereo-swap`.
+Keep the initial strength low. Stop if vision feels strained.
+
+**Expected:** your existing Frametop displays continue to work. The new
+calibration panel has an unshifted background grid with a yellow crosshair,
+an **orange square** that should appear *in front* of the grid, and a **cyan
+circle** that should appear *behind* it. They have explicit known disparities,
+not guessed luminance depth, so eye order and perceived depth can be inspected
+directly. Cover one eye at a time: the LEFT eye should see a **red** marker in
+a corner, and the RIGHT eye a **blue** marker in the same place. Incorrect
+eye colors mean SBS eye order needs investigation; reversed perceived depth
+with correct eye colors can be checked with `--stereo-swap`.
+
+To compare against the **same calibration image with no depth**, rerun with
+`--stereo-strength 0`. The orange square and cyan circle will remain in
+the same places, but the disparity is zero, so both should align with the
+grid's focal plane. This makes a reproducible A/B test.
+
+For comparison with the original luminance-as-fake-depth checker, use
+`--stereo-luminance` with `--stereo-preview`. That mode is less reliable
+for visually judging stereoscopy and does not establish a foreground object.
+
+A successful build or `ext caps` reply alone does not prove that stereo works
+in SteamVR. Record whether the panel appears, whether each eye sees it, and
+whether its disparity is comfortable. If it fails, collect the terminal
+output without restarting or reinstalling the desktop.
+
+This tests the GPU stereo composition, **not** extension API commands or AI
+depth inference. Only after it passes should we consider a per-screen test.
+
+## Stage 2: a real desktop screenshot in the isolated VR overlay
+
+The timed standalone overlay can now sample pixels from a **one-shot PPM
+screenshot** rather than a synthetic grid. The desktop continues using its
+normal Frametop compositor. This is **not** live capture, interactive remote
+control, permissionless screen recording or machine-learned depth inference.
+The screenshot is never uploaded or transmitted by these scripts.
+
+First pull and rebuild the experimental branch **without using install.sh or
+changing the desktop launcher**:
+
+```sh
+cd ~/frametop-stereo-test
+git pull --ff-only
+./screens/build.sh
+```
+
+While the normal Frametop desktop is running, capture its **first** output
+with the KWin screenshot API (a permission-controlled, one-shot operation):
+
+```sh
+python3 screens/test/capture-stereo.py \
+  --screen 1 --output /home/steamos/Pictures/frametop-stereo-screen1.ppm
+```
+
+The helper discovers the nested Plasma D-Bus session of the current user,
+requests a screenshot through KWin, converts BGRA/RGBA pixels to binary P6,
+and constrains the image to at most 2048x1152. It **never** enables
+`KWIN_SCREENSHOT_NO_PERMISSION_CHECKS` or changes KWin's permissions.
+If screenshot access is denied, use the **existing** user-facing Spectacle
+screenshot tool inside Frametop, save a PNG to
+`/home/steamos/Pictures/framedepth.png`, then convert the saved PNG:
+
+```sh
+./scripts/frame.sh -C screens \
+  "magick /home/steamos/Pictures/framedepth.png -resize '2048x1152>' -alpha off -depth 8 ppm:/home/steamos/Pictures/frametop-stereo-screen1.ppm"
+```
+
+This uses the ImageMagick already available in Frametop's build container.
+Use a real non-secret screenshot; it remains an ordinary file in your home
+folder. The loader only accepts binary **P6 8-bit RGB** PPM, not P3, PNG
+or JPEG; unsupported input fails before the OpenVR overlay is created.
+
+Then run the timed stereo snapshot independently of the working desktop:
+
+```sh
+./scripts/frame.sh -C screens \
+  './build/ft-handtest --ppm /home/steamos/Pictures/frametop-stereo-screen1.ppm --stereo-strength 0.006 --seconds 20'
+```
+
+The photo/screenshot uses the **original luminance-as-fake-depth shader**,
+not the independent calibrated orange/cyan geometry. Expect some warping
+near text and icons, and possibly little convincing actual depth: the point
+is to validate importing *real application pixels* into GPU/SBS/SteamVR
+without intercepting your desktop. For a direct flat comparison, run the same
+command with `--stereo-strength 0`. To stop early, press Ctrl+C.
+If uncomfortable or wrong-eye, stop rather than raising the strength.
+
+Read-only, offline regression tests:
+
+```sh
+g++ -std=c++17 -Wall -Wextra -Werror \
+  screens/tests/stereo-image-test.cpp -o /tmp/ft-stereo-image-test
+/tmp/ft-stereo-image-test
+python3 screens/tests/test_capture_stereo.py
+```
+
+The screenshot helper and new `--ppm` path need live Steam Frame
+testing. Working synthetic calibration proves the stereo overlay, **not**
+that KWin will authorize a snapshot or that source-image depth looks good.
 
 ## Python client
 

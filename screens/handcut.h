@@ -15,6 +15,7 @@
 #pragma once
 
 #include "vr.h"
+#include "stereo-preview.h"
 
 #include <openvr.h>
 
@@ -109,6 +110,7 @@ struct Output {
     const void *key = nullptr;
     uint64_t serial = 0;
     bool drawn = false;
+    ft_stereo::Preview preview{};
     std::vector<Capsule2D> spots[2];
 };
 
@@ -146,7 +148,7 @@ public:
     // 3 ticks: the panel showed its client buffer meanwhile) waits for its buffer, so a stale
     // one never shows.
     const Output *Composite(int panel, const void *key, uint64_t serial, const ft_dmabuf &src,
-                            const std::vector<Capsule2D> eyes[2]);
+                            const std::vector<Capsule2D> eyes[2], const ft_stereo::Preview &preview = {});
     // ft-handtest --probe: a transparent w x h buffer per eye (side by side) with only the
     // dots in it, drawn every call, fenced as Composite's. Returns the newest finished one.
     const Output *Marks(int panel, int w, int h, const std::vector<Mark> eyes[2]);
@@ -157,17 +159,20 @@ public:
     // How long the last Composite took on the CPU, ms.
     double lastMs() const { return lastMs_; }
     CutStats TakeStats() { CutStats s = stats_; stats_ = {}; return s; }
+    // A failed diagnostic stereo shader must not disable ordinary hand cutouts.
+    bool SupportsStereo() const { return ready_ && stereoProg_ != 0; }
 
 private:
     unsigned Texture(const void *key, const ft_dmabuf &src);
     bool MakeOutput(Output &o, int w, int h);
     void FreeOutput(Output &o);
     bool Passed(Output &o, int64_t timeoutNs);
-    void Draw(Output &o, unsigned tex, int w, int h, const std::vector<Capsule2D> eyes[2], bool partial);
+    void Draw(Output &o, unsigned tex, int w, int h, const std::vector<Capsule2D> eyes[2],
+              const ft_stereo::Preview &preview, bool partial);
     bool ready_ = false;
     int drm_ = -1;
     void *gbm_ = nullptr, *dpy_ = nullptr, *ctx_ = nullptr;
-    unsigned copyProg_ = 0, cutProg_ = 0, markProg_ = 0, vbo_ = 0;
+    unsigned copyProg_ = 0, stereoProg_ = 0, cutProg_ = 0, markProg_ = 0, vbo_ = 0;
     std::vector<uint64_t> modifiers_;
     std::function<void(const Output *)> released_;
     struct Imported { void *image; unsigned tex; };
