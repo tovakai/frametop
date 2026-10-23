@@ -59,14 +59,15 @@ installer above does.
 SteamVR
   └── ft-screens (VR surfaces, pointer/keyboard relay, DMA-BUF)
         └── Hyprland (nested Wayland backend, one output surface per panel)
-              └── simple terminal (Quickshell later)
+              └── Quickshell (end-4) and the controller action daemon
 ```
 
-`FT_DESKTOP_SESSION=hyprland` chooses the experimental desktop for a
-**single launch**; `DESKTOP=hyprland` in `~/.config/frametop.conf` makes it
-the default (not recommended until tested). Only the `screens` backend is
-supported and `FLOAT_SLOTS` becomes 0. KWin-specific layout startup,
-floating windows, remote desktop and automatic SteamVR keyboard are bypassed.
+The Steam Desktop entry runs `~/.local/bin/frametop-desktop`, which reads
+`~/.config/frametop/desktop-selection`. That file is `hyprland` or `plasma`.
+It is not `DESKTOP=` in `~/.config/frametop.conf`. Only the `screens`
+backend is supported and `FLOAT_SLOTS` becomes 0. KWin-specific layout
+startup, floating windows, remote desktop and automatic SteamVR keyboard
+are bypassed.
 
 ## Hardware bring-up stages
 
@@ -180,8 +181,9 @@ not start a second server. Bluetooth and UPower stay on SteamOS; the
 container cannot authenticate to that system bus.
 [end4-frame.md](end4-frame.md) lists the rest.
 
-Plasma's `ft-screens` on `ft-screens-0` can stay running. The experimental
-session uses `ft-hyprland-0` and does not stop that process. Its compositor
+Starting Hyprland stops Plasma's `ft-screens` on `ft-screens-0` first, and
+starting Plasma stops the Hyprland session. The two do not stay up together.
+Hyprland's compositor
 reports `keyboard hyprland` while its panel was clicked and the Steam
 dashboard is not in front, and `keyboard hyprland 0` otherwise. It does not
 send `keyboard steam`, so Plasma keeps that signal. Chord buttons follow the
@@ -266,28 +268,19 @@ about a third of a second; the socket path does not.
 ## Relay deployment
 
 The user unit `frametop-input-relay.service` is `Type=notify` with
-`FileDescriptorStorePreserve=yes`. Its `ExecStart` is
-`/usr/bin/python3 /home/steamos/frametop-api/input/input-relay.py`.
-Restarting that unit keeps the virtual mouse and keyboard file descriptors
-in systemd's store, so SteamVR does not have to reopen them.
+`FileDescriptorStorePreserve=yes`. The unit file still names
+`~/frametop-api/input/input-relay.py`. The Hyprland install adds a drop-in,
+`~/.config/systemd/user/frametop-input-relay.service.d/hyprland.conf`, that
+replaces `ExecStart` with the pinned relay. Restarting the unit keeps the
+virtual mouse and keyboard file descriptors in systemd's store. Do not
+`systemctl --user clean --what=fdstore` on that unit.
 
-The live tests switched the running relay with a drop-in and merged
-`controller_chords` into the headset rules, then rolled that back. The
-drop-in is gone, `~/.config/frametop-input.json` is the pre-test copy,
-the unit again runs `frametop-api`, and the virtual devices were reused.
-`vrglobal` was turned back off. Do not restart the relay or launch another
-headset session until that is approved again. After a switch, chords stay
-idle until the experimental session writes the route file.
+`controller_chords` in `~/.config/frametop-input.json` is the Trigger map,
+and `controller_in_games` is false so those chords are not active in a game.
+They bind only while the Hyprland route file exists and the panel is focused.
+Stopping the session removes the route file and releases the chords.
 
-Rollback, after a switch that has been approved and performed:
-
-1. Point `ExecStart` back at `/home/steamos/frametop-api/input/input-relay.py`.
-2. `systemctl --user daemon-reload` and `systemctl --user restart frametop-input-relay`.
-3. Restore `~/.config/frametop-input.json` from the copy made before the merge.
-4. Do not `systemctl --user clean --what=fdstore frametop-input-relay` unless
-   the virtual devices themselves must be recreated. Cleaning the store makes
-   SteamVR lose those devices until SteamVR is restarted.
-
-Stopping the experimental session removes the route file. With the new relay,
-that releases the chord buttons without another edit. The installed relay is
-unchanged by removing the file.
+`frametop-desktop rollback` restores the desktop entry, the input rules, the
+layout file, and the relay drop-in from the snapshot taken at install, then
+restarts the relay and starts the Plasma session. It does not clear the
+file-descriptor store.
