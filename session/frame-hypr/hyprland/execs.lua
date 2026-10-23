@@ -11,5 +11,8 @@ hl.on("hyprland.start", function()
         if runtime and #runtime > 0 then
             hl.exec_cmd("python3 " .. root .. "/frame-desktopd.py " .. runtime .. "/frametop-desktop.sock")
         end
+        -- Claims Hyprland monitors onto Frametop slots. If it exits, the
+        -- panels stay on whatever slots they already have.
+        hl.exec_cmd("python3 " .. root .. "/hyprland_outputs.py")
     end
 end)

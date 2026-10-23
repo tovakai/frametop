@@ -198,24 +198,31 @@ Kirigami.ApplicationWindow {
 
             header: Kirigami.InlineMessage {
                 position: Kirigami.InlineMessage.Position.Header
-                visible: backend.restartNeeded || !backend.desktopRunning
-                type: Kirigami.MessageType.Information
-                text: backend.restartNeeded
-                      ? (spage.md ? "Screens were added or removed. That applies when the desktop starts again; restarting closes its windows (and this app)."
-                                  : "The number of screens, resolution, or panel width changed. They apply when the desktop starts again; restarting closes its windows (and this app).")
-                      : "The desktop isn't running. These settings apply the next time it starts."
-                actions: [
-                    Kirigami.Action {
-                        visible: backend.restartNeeded
-                        text: "Restart desktop"
-                        icon.name: "system-reboot"
-                        onTriggered: backend.restartDesktop()
-                    }
-                ]
+                visible: backend.limitations.length > 0
+                type: Kirigami.MessageType.Warning
+                text: backend.limitations.join(" ")
             }
 
             ColumnLayout {
                 spacing: Kirigami.Units.largeSpacing
+
+                Kirigami.InlineMessage {
+                    Layout.fillWidth: true
+                    visible: backend.restartNeeded || !backend.desktopRunning
+                    type: Kirigami.MessageType.Information
+                    text: backend.restartNeeded
+                          ? (spage.md ? "Screens were added or removed. That applies when the desktop starts again; restarting closes its windows (and this app)."
+                                      : "The number of screens, resolution, or panel width changed. They apply when the desktop starts again; restarting closes its windows (and this app).")
+                          : "The desktop isn't running. These settings apply the next time it starts."
+                    actions: [
+                        Kirigami.Action {
+                            visible: backend.restartNeeded
+                            text: "Restart desktop"
+                            icon.name: "system-reboot"
+                            onTriggered: backend.restartDesktop()
+                        }
+                    ]
+                }
 
                 // ft-screens: every screen its own resolution and size.
                 Repeater {

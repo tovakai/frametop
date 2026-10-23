@@ -32,8 +32,8 @@ frametop_prepend_aquamarine() {
   echo "frametop: using patched aquamarine ($dir)" >&2
 }
 
-# Experimental VR launch. One 1920x1080 panel on its own sockets, never the
-# saved Plasma layout (ft-layout screen-args) and never FT_SCREEN_COUNT from it.
+# Experimental VR launch. Its own sockets, never the saved Plasma layout
+# (ft-layout screen-args). The default panel is still 1920x1080 at 1.5 m.
 FT_HYPRLAND_SOCKET=ft-hyprland-0
 FT_HYPRLAND_CONTROL=ft_hyprland
 FT_HYPRLAND_SCREEN=1920x1080@1.5
@@ -69,12 +69,18 @@ frametop_hyprland_route_end() {
   rm -f -- "$path"
 }
 
-frametop_hyprland_require_one_panel() {
-  if [ -n "${FT_SCREEN_COUNT:-}" ] && [ "$FT_SCREEN_COUNT" != 1 ]; then
-    echo "frametop: experimental Hyprland VR session is one panel; refusing FT_SCREEN_COUNT=$FT_SCREEN_COUNT" >&2
+# How many panels this launch will open. Unset means one, the current
+# 1920x1080 panel. The layout file (when the session asks for it) can raise
+# the count. 0 and anything above the compositor's slot table are refused.
+frametop_hyprland_prepare_screens() {
+  local count=${FT_SCREEN_COUNT:-1}
+  if ! [[ $count =~ ^[1-9][0-9]*$ ]] || (( count > 24 )); then
+    echo "frametop: invalid FT_SCREEN_COUNT=$count" >&2
     return 2
   fi
-  export FT_SCREEN_COUNT=1
+  export FT_SCREEN_COUNT=$count
+  export FT_HYPR_OUTPUTS=${FT_HYPR_OUTPUTS:-$count}
+  export FT_OUTPUT_NAMES=1
 }
 
 # True when this command line is the experimental ft-screens, not another one.
@@ -90,7 +96,7 @@ frametop_cmdline_is_hyprland_screens() {
 # config path), $2 the Wayland socket name, $3 the optional in-box wrapper pid.
 # Never kills every compositor by process name.
 frametop_stop_hyprland_session() {
-  local root=$1 socket=$2 wrapper=${3:-} pid cmd
+  local root=$1 socket=$2 wrapper=${3:-} pid cmd frametop_stop_pids=
   local session_dir=$root/session/
   frametop_hyprland_route_end || true
   for pid in /proc/[0-9]*; do
@@ -99,16 +105,30 @@ frametop_stop_hyprland_session() {
     [ -r "/proc/$pid/cmdline" ] || continue
     cmd=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)
     [ -n "$cmd" ] || continue
+    # Match this checkout's session path. A bare program name would also
+    # match the installed pin, which is a different tree.
     if frametop_cmdline_is_hyprland_screens "$cmd" "$socket" ||
-       [[ $cmd == *"Hyprland -c ${session_dir}"* ]] ||
-       [[ $cmd == *"hyprland-frame.lua"* ]] ||
-       [[ $cmd == *"hyprland-key-forward.py"* ]] ||
-       [[ $cmd == *"frame-desktopd.py"* ]] ||
-       [[ $cmd == *"frame-quickshell.sh"* ]] ||
-       [[ $cmd == *"qs -c ii"* ]]; then
+       [[ $cmd == *"${session_dir}"* ]]; then
       kill "$pid" 2>/dev/null || true
+      frametop_stop_pids="${frametop_stop_pids} $pid"
     fi
   done
+  # Quickshell's command line has no session path. Stop children of a
+  # process this session already matched, and leave any other shell.
+  if [ -n "${frametop_stop_pids}" ]; then
+    for pid in /proc/[0-9]*; do
+      pid=${pid#/proc/}
+      [[ $pid =~ ^[0-9]+$ ]] || continue
+      [ -r "/proc/$pid/stat" ] || continue
+      local ppid
+      ppid=$(sed -n 's/.*) [^ ]* //p' "/proc/$pid/stat" | awk '{print $1}')
+      for root in $frametop_stop_pids; do
+        if [ "$ppid" = "$root" ]; then
+          kill "$pid" 2>/dev/null || true
+        fi
+      done
+    done
+  fi
   if [ -n "$wrapper" ]; then
     kill "$wrapper" 2>/dev/null || true
     local _

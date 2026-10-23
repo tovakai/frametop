@@ -2,7 +2,9 @@
 # Runs only inside the nested Hyprland process environment (never on SteamOS).
 set -euo pipefail
 here=$(dirname "$(readlink -f "$0")")
-count=${FT_SCREEN_COUNT:-1}
+# FT_HYPR_OUTPUTS is the number of Hyprland monitors. FT_SCREEN_COUNT is the
+# ft-screens slot count, which can be higher when a slot is unused.
+count=${FT_HYPR_OUTPUTS:-${FT_SCREEN_COUNT:-1}}
 if ! [[ $count =~ ^[1-9][0-9]*$ ]] || (( count > 24 )); then
   echo "frametop: invalid FT_SCREEN_COUNT for output startup: $count" >&2
   exit 2

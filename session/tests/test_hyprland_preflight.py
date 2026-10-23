@@ -161,8 +161,10 @@ class HyprlandPreflightTests(unittest.TestCase):
             ["bash", "-c", f"""
 set -euo pipefail
 . "{env}"
-frametop_hyprland_require_one_panel
+frametop_hyprland_prepare_screens
 test "$FT_SCREEN_COUNT" = 1
+test "$FT_HYPR_OUTPUTS" = 1
+test "$FT_OUTPUT_NAMES" = 1
 test "$FT_HYPRLAND_SCREEN" = "1920x1080@1.5"
 frametop_cmdline_is_hyprland_screens \\
   "ft-screens --socket ft-hyprland-0 --control ft_hyprland --screen 1920x1080@1.5 --spares 0" \\
@@ -172,8 +174,14 @@ if frametop_cmdline_is_hyprland_screens \\
   ft-hyprland-0; then
   exit 3
 fi
+FT_SCREEN_COUNT=3
+FT_HYPR_OUTPUTS=
+frametop_hyprland_prepare_screens
+test "$FT_SCREEN_COUNT" = 3
+test "$FT_HYPR_OUTPUTS" = 3
 set +e
-FT_SCREEN_COUNT=2 frametop_hyprland_require_one_panel
+FT_SCREEN_COUNT=0
+frametop_hyprland_prepare_screens
 status=$?
 set -e
 test "$status" = 2
@@ -181,11 +189,14 @@ test "$status" = 2
             capture_output=True, text=True, check=False,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("one panel", result.stderr)
+        self.assertIn("invalid FT_SCREEN_COUNT", result.stderr)
         session = (ROOT / "session" / "frametop-session.sh").read_text()
         hypr, plasma = session.split("# PLASMA_VR_LAUNCH", 1)
         hypr = hypr.split("# HYPRLAND_VR_LAUNCH", 1)[1]
-        self.assertIn("frametop_hyprland_require_one_panel", hypr)
+        self.assertIn("frametop_hyprland_prepare_screens", hypr)
+        self.assertIn("hyprland_layout.py", hypr)
+        self.assertIn("FT_OUTPUT_NAMES", env.read_text())
+        self.assertNotIn("qs -c ii", (ROOT / "session" / "hyprland-env.sh").read_text())
         self.assertIn("frametop_stop_hyprland_session", hypr)
         self.assertIn("saved layout is not used", hypr)
         self.assertNotIn("screen-args", hypr)

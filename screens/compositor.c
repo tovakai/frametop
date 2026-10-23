@@ -67,6 +67,7 @@
 #include "vr.h"
 #include "controller-click.h"
 #include "chord-click.h"
+#include "output-bind.h"
 #include "remote.h"
 #include "relay-buttons.h"
 
@@ -96,6 +97,9 @@ struct screen {
     int buffer_width, buffer_height;
     struct wlr_xdg_toplevel_decoration_v1 *decoration;  // answered on the first commit
     struct wl_listener commit, destroy, decoration_destroy, set_title;
+    char monitor[FT_OUTPUT_NAME_MAX];  // Aquamarine's WAYLAND-N, once the title arrives
+    bool need_size;                     // initial commit happened before the slot was known
+    bool panel;                         // ft_vr_screen_create has a panel for this slot
     // Its frame rate (see tick): when its last frame callback went (ms), and what its recent
     // commits looked like, to tell a video playing on it.
     uint32_t frame_sent;
@@ -121,6 +125,9 @@ struct server {
     struct wlr_xdg_decoration_manager_v1 *decoration;
     struct wl_listener new_toplevel, new_decoration;
     struct screen *screens[MAX_SCREENS];
+    struct screen *pending[MAX_SCREENS];  // Hyprland toplevels waiting for a claim
+    struct ft_output_table claims;
+    bool output_names;  // FT_OUTPUT_NAMES=1: slot comes from a claim, not arrival order
     struct config config[MAX_SCREENS];
     double scale[MAX_SCREENS];  // KWin's scale for each screen (panel pixels per logical unit)
     int n_config, n_screens;  // n_config: the screens; the outputs after them are spares
@@ -187,6 +194,91 @@ static void track_buffer(struct server *s, struct wlr_buffer *buffer) {
 static bool relay_can_press(struct server *s);
 static void release_relay_buttons(struct server *s, const char *why);
 
+static void apply_screen_size(struct screen *sc) {
+    const struct config *c = &sc->server->config[sc->index];
+    wlr_xdg_toplevel_set_size(sc->toplevel, c->width, c->height);
+    wlr_xdg_toplevel_set_activated(sc->toplevel, true);
+    if (sc->decoration)
+        wlr_xdg_toplevel_decoration_v1_set_mode(sc->decoration, WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+}
+
+static bool park_screen(struct server *s, struct screen *sc) {
+    for (int i = 0; i < MAX_SCREENS; ++i) {
+        if (!s->pending[i]) {
+            s->pending[i] = sc;
+            return true;
+        }
+    }
+    return false;
+}
+
+static void unpark_screen(struct server *s, struct screen *sc) {
+    for (int i = 0; i < MAX_SCREENS; ++i)
+        if (s->pending[i] == sc) s->pending[i] = NULL;
+}
+
+static void unbind_screen(struct screen *sc) {
+    struct server *s = sc->server;
+    if (sc->index < 0) return;
+    if (s->pointer_focus == sc) {
+        release_relay_buttons(s, "its screen moved");
+        s->pointer_focus = NULL;
+    }
+    if (sc->panel) ft_vr_screen_destroy(sc->index);
+    sc->panel = false;
+    if (s->screens[sc->index] == sc) s->screens[sc->index] = NULL;
+    sc->index = -1;
+    (void)park_screen(s, sc);
+}
+
+// Slot is 1-based. A claim for a slot that already shows another monitor
+// parks that monitor; the named one takes the slot.
+static void bind_screen(struct screen *sc, int slot) {
+    struct server *s = sc->server;
+    const int index = slot - 1;
+    if (index < 0 || index >= s->n_config || index >= MAX_SCREENS) return;
+    if (sc->index == index && s->screens[index] == sc) return;
+    struct screen *other = s->screens[index];
+    if (other && other != sc) unbind_screen(other);
+    if (sc->index >= 0) unbind_screen(sc);
+    unpark_screen(s, sc);
+    sc->index = index;
+    s->screens[index] = sc;
+    if (!sc->panel) {
+        const struct config *c = &s->config[index];
+        wlr_log(WLR_INFO, "screen %d: Hyprland output %s, %dx%d, %.2f m wide",
+                slot, sc->monitor[0] ? sc->monitor : "?", c->width, c->height, c->metres);
+        ft_vr_screen_create(index, c->metres, s->n_config);
+        sc->panel = true;
+    }
+    if (sc->need_size) apply_screen_size(sc);
+}
+
+static void consider_screen(struct screen *sc) {
+    if (!sc->monitor[0]) return;
+    const int slot = ft_output_screen(&sc->server->claims, sc->monitor);
+    if (slot > 0) bind_screen(sc, slot);
+}
+
+static void consider_named(struct server *s, const char *monitor) {
+    for (int i = 0; i < MAX_SCREENS; ++i) {
+        struct screen *sc = s->pending[i];
+        if (sc && strcmp(sc->monitor, monitor) == 0) consider_screen(sc);
+    }
+    for (int i = 0; i < MAX_SCREENS; ++i) {
+        struct screen *sc = s->screens[i];
+        if (sc && strcmp(sc->monitor, monitor) == 0) consider_screen(sc);
+    }
+}
+
+static struct screen *screen_by_toplevel(struct server *s, struct wlr_xdg_toplevel *toplevel) {
+    for (int i = 0; i < MAX_SCREENS; ++i) {
+        if (s->screens[i] && s->screens[i]->toplevel == toplevel) return s->screens[i];
+        if (s->pending[i] && s->pending[i]->toplevel == toplevel) return s->pending[i];
+    }
+    return NULL;
+}
+
 // A video (or anything moving over a large area) on a screen you don't look at keeps the
 // full frame rate (see frame_interval): its commits keep redrawing much of it, and keep
 // coming as fast as its rate lets them. A cursor blinking or a spinner turning redraws a
@@ -210,6 +302,13 @@ static void screen_commit(struct wl_listener *l, void *data) {
     struct screen *sc = wl_container_of(l, sc, commit);
     struct wlr_xdg_surface *xdg = sc->toplevel->base;
     if (xdg->initial_commit) {
+        // A Hyprland output may commit before its monitor name is claimed.
+        // The size goes out once the slot is known. KWin is already in a slot.
+        if (sc->server->output_names) {
+            sc->need_size = true;
+            if (sc->index >= 0) apply_screen_size(sc);
+            return;
+        }
         // First commit: tell KWin the size of this screen.
         const struct config spare = {640, 480, 0.5};  // until ft-floatd sizes it
         const struct config *c = sc->index < sc->server->n_config ? &sc->server->config[sc->index] : &spare;
@@ -219,6 +318,7 @@ static void screen_commit(struct wl_listener *l, void *data) {
             wlr_xdg_toplevel_decoration_v1_set_mode(sc->decoration, WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
         return;
     }
+    if (sc->index < 0) return;
     struct wlr_buffer *buffer = xdg->surface->current.buffer;
     static int logged;
     if (logged < 6) {
@@ -257,15 +357,18 @@ static void screen_commit(struct wl_listener *l, void *data) {
 
 static void screen_destroy(struct wl_listener *l, void *data) {
     struct screen *sc = wl_container_of(l, sc, destroy);
-    wlr_log(WLR_INFO, "screen %d closed", sc->index + 1);
+    struct server *s = sc->server;
+    wlr_log(WLR_INFO, "screen %d closed", sc->index >= 0 ? sc->index + 1 : 0);
     if (sc->held) wlr_buffer_unlock(sc->held);
-    ft_vr_screen_destroy(sc->index);
-    if (sc->server->pointer_focus == sc) {
-        release_relay_buttons(sc->server, "its screen closed");
-        sc->server->pointer_focus = NULL;
+    if (sc->index >= 0 && (sc->panel || !s->output_names)) ft_vr_screen_destroy(sc->index);
+    if (s->pointer_focus == sc) {
+        release_relay_buttons(s, "its screen closed");
+        s->pointer_focus = NULL;
     }
     if (sc->decoration) wl_list_remove(&sc->decoration_destroy.link);
-    sc->server->screens[sc->index] = NULL;
+    if (sc->index >= 0 && s->screens[sc->index] == sc) s->screens[sc->index] = NULL;
+    unpark_screen(s, sc);
+    if (sc->monitor[0]) ft_output_release_monitor(&s->claims, sc->monitor);
     wl_list_remove(&sc->commit.link);
     wl_list_remove(&sc->destroy.link);
     wl_list_remove(&sc->set_title.link);
@@ -277,6 +380,15 @@ static void screen_destroy(struct wl_listener *l, void *data) {
 static void screen_title(struct wl_listener *l, void *data) {
     struct screen *sc = wl_container_of(l, sc, set_title);
     const char *title = sc->toplevel->title ? sc->toplevel->title : "";
+    if (sc->server->output_names) {
+        char name[FT_OUTPUT_NAME_MAX];
+        if (ft_output_monitor_name(title, name, sizeof name)) {
+            snprintf(sc->monitor, sizeof sc->monitor, "%s", name);
+            consider_screen(sc);
+        }
+        wlr_log(WLR_INFO, "screen %d: \"%s\"", sc->index >= 0 ? sc->index + 1 : 0, title);
+        return;
+    }
     wlr_log(WLR_INFO, "screen %d: \"%s\"", sc->index + 1, title);
     if (sc->index >= sc->server->n_config) ft_vr_float_output(sc->index, !strstr(title, "Output disabled"));
 }
@@ -292,8 +404,30 @@ static void new_toplevel(struct wl_listener *l, void *data) {
     }
     struct screen *sc = calloc(1, sizeof *sc);
     sc->server = s;
-    sc->index = index;
     sc->toplevel = toplevel;
+    if (s->output_names) {
+        // Do not take the first free slot. The title names the monitor, and
+        // a claim names the slot. Until both exist this toplevel has no panel.
+        sc->index = -1;
+        if (!park_screen(s, sc)) {
+            wlr_log(WLR_ERROR, "more than %d Hyprland outputs waiting; ignoring one", MAX_SCREENS);
+            free(sc);
+            return;
+        }
+        char name[FT_OUTPUT_NAME_MAX];
+        if (toplevel->title && ft_output_monitor_name(toplevel->title, name, sizeof name)) {
+            snprintf(sc->monitor, sizeof sc->monitor, "%s", name);
+            consider_screen(sc);
+        }
+        sc->commit.notify = screen_commit;
+        wl_signal_add(&toplevel->base->surface->events.commit, &sc->commit);
+        sc->destroy.notify = screen_destroy;
+        wl_signal_add(&toplevel->events.destroy, &sc->destroy);
+        sc->set_title.notify = screen_title;
+        wl_signal_add(&toplevel->events.set_title, &sc->set_title);
+        return;
+    }
+    sc->index = index;
     s->screens[index] = sc;
     if (index >= s->n_config) {
         wlr_log(WLR_INFO, "screen %d: KWin window, a spare output (floating window %d)", index + 1,
@@ -323,15 +457,13 @@ static void decoration_destroyed(struct wl_listener *l, void *data) {
 static void new_decoration(struct wl_listener *l, void *data) {
     struct server *s = wl_container_of(l, s, new_decoration);
     struct wlr_xdg_toplevel_decoration_v1 *d = data;
-    for (int i = 0; i < MAX_SCREENS; ++i) {
-        struct screen *sc = s->screens[i];
-        if (!sc || sc->toplevel != d->toplevel) continue;
-        sc->decoration = d;
-        sc->decoration_destroy.notify = decoration_destroyed;
-        wl_signal_add(&d->events.destroy, &sc->decoration_destroy);
-        if (d->toplevel->base->initialized)
-            wlr_xdg_toplevel_decoration_v1_set_mode(d, WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
-    }
+    struct screen *sc = screen_by_toplevel(s, d->toplevel);
+    if (!sc) return;
+    sc->decoration = d;
+    sc->decoration_destroy.notify = decoration_destroyed;
+    wl_signal_add(&d->events.destroy, &sc->decoration_destroy);
+    if (d->toplevel->base->initialized)
+        wlr_xdg_toplevel_decoration_v1_set_mode(d, WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 }
 
 // ---------------------------------------------------------------- input from the panels
@@ -425,7 +557,7 @@ static void handle_vr_event(const struct ft_event *e, void *data) {
         return;
     }
     const uint32_t t = now_ms();
-    const double x = e->x / s->scale[e->screen], y = e->y / s->scale[e->screen];  // KWin's units
+    double x = e->x / s->scale[e->screen], y = e->y / s->scale[e->screen];  // KWin's units
     switch (e->type) {
         case FT_MOTION:
         case FT_BUTTON:
@@ -435,6 +567,32 @@ static void handle_vr_event(const struct ft_event *e, void *data) {
                 // pointer until the next move: a press right after crossing onto another
                 // screen landed where the pointer had been. Entering one unit off makes the
                 // motion below go through.
+                wlr_seat_pointer_notify_enter(s->seat, surface, x + 1, y);
+                s->pointer_focus = sc;
+            }
+            // The laser hits one panel. A pointer that leaves that panel's
+            // pixel row continues on the neighbour, which is the Hyprland
+            // monitor placed beside it. One hop, so the edges cannot chase.
+            if (s->output_names && e->type == FT_MOTION && sc->index >= 0 && sc->index < s->n_config &&
+                s->scale[sc->index] > 0) {
+                const double logical_w = s->config[sc->index].width / s->scale[sc->index];
+                int hop = 0;
+                if (x < 0) hop = -1;
+                else if (logical_w > 0 && x >= logical_w) hop = 1;
+                if (hop) {
+                    int j = sc->index + hop;
+                    while (j >= 0 && j < s->n_config && !s->screens[j]) j += hop;
+                    if (j >= 0 && j < s->n_config && s->screens[j] && s->screens[j] != sc) {
+                        sc = s->screens[j];
+                        surface = sc->toplevel->base->surface;
+                        const double next_w = s->config[sc->index].width / s->scale[sc->index];
+                        x = hop < 0 ? (next_w > 1 ? next_w - 1 : 0) : 0;
+                        y = e->y / s->scale[sc->index];
+                        s->pointer_focus = NULL;
+                    }
+                }
+            }
+            if (s->pointer_focus != sc) {
                 wlr_seat_pointer_notify_enter(s->seat, surface, x + 1, y);
                 s->pointer_focus = sc;
             }
@@ -795,6 +953,49 @@ static int control_readable(int fd, uint32_t mask, void *data) {
             if (!isfinite(scale) || scale < 0 || scale > 64 || s->controller_click.buttons)
                 snprintf(reply, sizeof reply, "error threshold or held controller button");
             else { s->controller_click.threshold = scale; snprintf(reply, sizeof reply, "ok"); }
+        } else if (s->output_names && sscanf(buf, "claim %63s %d", reply, &index) == 2) {
+            // reply is a scratch buffer here; the monitor name is copied out
+            // before the reply text is written.
+            char monitor[FT_OUTPUT_NAME_MAX];
+            snprintf(monitor, sizeof monitor, "%s", reply);
+            if (!ft_output_claim(&s->claims, monitor, index) || index > s->n_config) {
+                if (index > s->n_config) ft_output_release_monitor(&s->claims, monitor);
+                snprintf(reply, sizeof reply, "error claim <WAYLAND-N> <screen>");
+            } else {
+                consider_named(s, monitor);
+                wlr_log(WLR_INFO, "claim %s -> screen %d", monitor, index);
+                snprintf(reply, sizeof reply, "ok");
+            }
+        } else if (s->output_names && sscanf(buf, "release %63s", reply) == 1) {
+            char monitor[FT_OUTPUT_NAME_MAX];
+            snprintf(monitor, sizeof monitor, "%s", reply);
+            ft_output_release_monitor(&s->claims, monitor);
+            snprintf(reply, sizeof reply, "ok");
+        } else if (s->output_names && sscanf(buf, "slot %d %d %d %lf", &index, &w, &h, &scale) == 4) {
+            if (index < 1 || index > MAX_SCREENS || w < 320 || h < 200 || w > 16384 || h > 16384 ||
+                !(scale >= 0.2 && scale <= 20)) {
+                snprintf(reply, sizeof reply, "error slot <screen> <w> <h> <metres>");
+            } else {
+                if (index > s->n_config) {
+                    for (int i = s->n_config; i < index; ++i)
+                        if (s->config[i].width == 0) s->config[i] = (struct config){1920, 1080, 1.5};
+                    s->n_config = index;
+                }
+                w += w & 1;
+                h += h & 1;
+                s->config[index - 1].width = w;
+                s->config[index - 1].height = h;
+                s->config[index - 1].metres = scale;
+                if (s->screens[index - 1]) wlr_xdg_toplevel_set_size(s->screens[index - 1]->toplevel, w, h);
+                snprintf(reply, sizeof reply, "ok");
+            }
+        } else if (s->output_names && strcmp(buf, "outputs") == 0) {
+            int at = snprintf(reply, sizeof reply, "ok");
+            for (int i = 0; i < MAX_SCREENS && at < (int)sizeof reply; ++i) {
+                struct screen *sc = s->screens[i];
+                if (!sc) continue;
+                at += snprintf(reply + at, sizeof reply - at, "\n%d %s", i + 1, sc->monitor[0] ? sc->monitor : "-");
+            }
         } else if (sscanf(buf, "size %d %d %d", &index, &w, &h) == 3) {
             // A new resolution for a screen, live: KWin resizes the screen to match. (KWin makes
             // it this size times its scale; ft-floatd sends spares' sizes divided by theirs.)
@@ -962,6 +1163,9 @@ static bool setup_dmabuf(struct server *s) {
 
 int main(int argc, char **argv) {
     struct server s = {0};
+    ft_output_table_init(&s.claims);
+    const char *output_names = getenv("FT_OUTPUT_NAMES");
+    s.output_names = output_names && strcmp(output_names, "1") == 0;
     // About 0.9 degrees on a 3.4 m wide 3440-pixel screen 2 m away; 8 (the first default,
     // about 0.2 degrees) needed a very still hand to click (headset test 2026-10-03).
     s.controller_click.threshold = 32;

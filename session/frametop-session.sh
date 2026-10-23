@@ -133,19 +133,27 @@ if [ "${1:-}" != --inner ]; then
   # ft-screens runs in Frametop's container (it's built against Fedora's wlroots); KWin and
   # Plasma stay on the host and connect to its socket. in-box starts the container in a scope
   # of its own, not this desktop's, or stopping the desktop would stop the container.
-  # HYPRLAND_VR_LAUNCH: one panel, its own sockets, saved layout is not read.
+  # HYPRLAND_VR_LAUNCH: its own sockets. The saved Plasma layout is not used.
   if [ "$desktop" = hyprland ]; then
     # shellcheck disable=SC1091
     . "$here/hyprland-env.sh"
-    frametop_hyprland_require_one_panel
+    spec=$(python3 "$here/hyprland_layout.py" shell-export) || spec=$'count=1\noutputs=1\nscreens=1920x1080@1.500'
+    FT_SCREEN_COUNT=$(printf '%s\n' "$spec" | awk -F= '/^count=/{print $2}')
+    FT_HYPR_OUTPUTS=$(printf '%s\n' "$spec" | awk -F= '/^outputs=/{print $2}')
+    screen_list=$(printf '%s\n' "$spec" | awk -F= '/^screens=/{print $2}')
+    frametop_hyprland_prepare_screens
     socket=$FT_HYPRLAND_SOCKET
-    echo "frametop: Hyprland desktop: 1 panel $FT_HYPRLAND_SCREEN (saved layout is not used)" >&2
+    echo "frametop: Hyprland desktop: ${FT_HYPR_OUTPUTS} output(s), primary ${FT_HYPRLAND_SCREEN} (the saved layout is not used)" >&2
     echo "frametop: $(date -Is) Hyprland desktop from $here" >> /tmp/frametop-hyprland-session.log
-    # Plasma already owns frametop.screen.1. This panel needs its own overlay key.
+    # Plasma already owns frametop.screen.1. These panels need their own overlay keys.
     export FT_OVERLAY_PREFIX=frametop.hypr
+    screen_argv=()
+    for spec_one in $screen_list; do
+      screen_argv+=(--screen "$spec_one")
+    done
     "$here/../scripts/in-box" "$here/../screens/build/ft-screens" \
       --socket "$socket" --control "$FT_HYPRLAND_CONTROL" \
-      --screen "$FT_HYPRLAND_SCREEN" --spares 0 \
+      "${screen_argv[@]}" --spares 0 \
       > /tmp/frametop-hyprland-screens.log 2>&1 < /dev/null &
     screens_pid=$!
     stop_hyprland_screens() { frametop_stop_hyprland_session "$here/.." "$socket" "$screens_pid"; }

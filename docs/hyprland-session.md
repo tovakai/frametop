@@ -9,8 +9,9 @@ The installed tree is pinned at
 `releases/<commit>`). Wallpaper, colors, and the end-4 config live outside
 that tree, in `~/.local/share/frametop/hyprland-desktop/config`,
 `~/.config/frametop/hyprland`, and `~/.local/state/frametop/hyprland`, so a
-later pin does not wipe them. `~/frametop-api` is not modified. It is the
-Plasma recovery tree.
+later pin does not wipe them. The icon fonts live beside that config, in
+`~/.local/share/frametop/hyprland-desktop/theme/fonts`. `~/frametop-api` is
+not modified. It is the Plasma recovery tree.
 
 ```text
 ~/.local/bin/frametop-desktop status
@@ -30,17 +31,44 @@ Install from a tested checkout on the Frame (it must already contain
 session/install-hyprland-desktop.sh --activate
 ```
 
-The panel is one 1920×1080 surface, 1.5 m wide, on sockets `ft-hyprland-0`
-and `ft_hyprland`. Quickshell is a client: if it fails to start or exits,
-Hyprland keeps running. The Fedora `dev` container is started by
+The default panel is one 1920×1080 surface, 1.5 m wide, on sockets
+`ft-hyprland-0` and `ft_hyprland`. More panels come from the Hyprland
+layout file, described below. Quickshell is a client: if it fails to start
+or exits, Hyprland keeps running. The Fedora `dev` container is started by
 `scripts/in-box` when the compositor launches.
+
+## Multiscreen
+
+Each Hyprland monitor is one Frametop panel. Aquamarine titles the Wayland
+window `aquamarine - WAYLAND-N`. That N is a creation counter, so ft-screens
+does not use it as the slot and does not use whichever window appeared
+first. `FT_OUTPUT_NAMES=1` parks the window until `claim WAYLAND-N <slot>`
+names the slot. The session's output helper keeps the map: a monitor that
+is still there keeps its slot, and a monitor that comes back under a new
+name takes the slot that was freed. Slots are stable ids (`hypr-1`,
+`hypr-2`, ...) in `~/.config/frametop/hyprland-layout.json`. Removing one
+screen does not renumber the others or clear their saved poses.
+
+The default file is still one 1920×1080 panel, 1.5 m wide. Extra screens
+are added with `session/hyprland_layout.py add`. Their first pose is the
+compositor's row in front of the headset. Arrange (Display Settings, or
+`place` on the `ft_hyprland` socket) lays them out with the same geometry
+as a Plasma preset. A poll does not send `place` again, so dragging a
+panel in VR is not pulled back. A saved pose is restored relative to the
+headset heading at restore time. It is not a fixed point in the room.
+
+Hyprland's own monitor row is left to right with the edges touching, so
+the pointer can cross. That row is separate from the VR pose. Workspace
+keys stay the ones in the end-4 config. A controller click focuses the
+monitor whose panel was hit.
+
+The installed pin is not changed by checking out this branch. A live
+multiscreen session uses the experimental checkout and `ft-hyprland-0`,
+and it is not started from here until that launch is authorized.
 
 ## Not supported on this desktop
 
 These stay unavailable instead of pretending to work:
-
-- More than one spatial panel. `FT_SCREEN_COUNT` other than 1 is refused,
-  and the saved Plasma layout is not read.
 - KWin floating windows, the float decoration, and Launch as Standalone.
 - The VNC / remote-desktop bridge (`desktops.sh remote`).
 - KWin-only startup (text-input method, spare outputs, layout auto-arrange).
@@ -105,10 +133,10 @@ are bypassed.
    outputs without VR, set `FT_SCREEN_COUNT=2`.
 5. Launch the experimental branch only when you're ready to test. From that
    checkout, `FT_DESKTOP_SESSION=hyprland ./session/frametop-session.sh`
-   starts **one** 1920×1080 panel on sockets `ft-hyprland-0` and
-   `ft_hyprland`. It does not read `ft-layout screen-args` and does not
-   change `~/.config/frametop-layout.json`. `FT_SCREEN_COUNT` other than 1
-   is rejected. Cleanup kills only the `ft-screens` whose command line
+   starts the Hyprland layout on sockets `ft-hyprland-0` and `ft_hyprland`.
+   With no layout file that is one 1920×1080 panel, 1.5 m wide. It does not
+   read `ft-layout screen-args` and does not change
+   `~/.config/frametop-layout.json`. Cleanup kills only the `ft-screens` whose command line
    carries `ft-hyprland-0`, and Hyprland started with this tree's minimal
    config (`session/hyprland-stop.sh` does the same). The Plasma path still
    uses the saved layout and its own `ft-screens-0` process. There is no
