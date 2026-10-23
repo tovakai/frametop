@@ -62,9 +62,10 @@ reaches games; see pointer/helper/vrbuttons.h).
 
 "controller_chords" is optional and separate. Its modifier (right/trigger) does nothing
 alone. A face button invokes normal or, when the trigger is already down, modified.
-Releases never invoke a second action. right/bumper stays SteamVR's left click; while
-the trigger is down the relay tells the experimental compositor "chord-click 1", and a
-swallowed click comes back as "chord-fired". Those buttons are requested only while
+Releases never invoke a second action. right/thumbstick stays SteamVR's right click.
+While the trigger is down the relay tells the experimental compositor "chord-click 1",
+and a swallowed right click comes back as "chord-fired". The thumbstick press itself
+also closes, once; the latch drops the second report. Those buttons are requested only while
 $XDG_RUNTIME_DIR/frametop-hyprland.route names a live session, Plasma's compositor is
 not running, typing is going to the desktop, and no VR game or pause is active.
 They are left out when controller_in_games is set, because that flag applies to the

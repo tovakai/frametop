@@ -126,9 +126,10 @@ and points fontconfig at the staged fonts for Quickshell only. Staged QML is pat
 define (`forceMonitor`, `widgetPadding`, and an empty tab target); those
 are the same files on Quickshell 0.3.2. The staged conflict killer returns
 before it runs when `FT_FRAME_SESSION` is set, so it does not stop Plasma's
-`kded6`. PipeWire, Bluetooth, and
-UPower stay unavailable in the container, and no host service is installed
-to provide them.
+`kded6`. The session points PipeWire and Pulse at the host sockets and does
+not start a second server. Bluetooth and UPower stay on SteamOS; the
+container cannot authenticate to that system bus.
+[end4-frame.md](end4-frame.md) lists the rest.
 
 Plasma's `ft-screens` on `ft-screens-0` can stay running. The experimental
 session uses `ft-hyprland-0` and does not stop that process. Its compositor
@@ -187,29 +188,28 @@ requested in that same case.
       is not restarted by these changes. R1, R3, and stick scroll stay
       SteamVR's click and scroll. Trigger is a modifier only after that
       profile is active: face buttons change workspace or move the focused
-      window, and trigger plus a face button or R1 launches an app or
-      sends one `closewindow`. Trigger+R1 does not become a left click when
-      the trigger is released first.
+      window, and trigger plus a face button launches an app. Trigger+R3
+      closes one window. R1 stays a left click. What the Frame session
+      runs, adapts, or leaves out is [end4-frame.md](end4-frame.md).
 
 ## Controller chords
 
 `input/controller_chords.py` decides a press. The trigger never launches
 anything. Releasing the trigger and the other button in either order does
-not launch a second action. Trigger+R1 does not bind the bumper, so the
-normal left click remains; ft-screens swallows that click only while
-`chord-click 1` is set and asks the relay to run the close action once.
-SteamVR attributes the click to the hand controller or to the pointer
-helper's virtual controller (`ft_pointer`). The guard accepts either.
-`e.controller` stays false for `ft_pointer`, so the 3D mouse's short drags
-are unchanged. A mouse click is neither source and is delivered while the
-trigger is held. The screens log records the device class and controller
-type for each left click, and the relay logs `chord arm` and `chord-fired`.
-Disarming leaves an already swallowed press swallowed, so releasing the
-trigger before R1 does not deliver the button-up. A VR game, pause, typing
-leaving the desktop, or the route file disappearing clears the modifier and
-drops the buttons from the helper's bind list. They are also left unbound
-while `controller_in_games` is set. The commands are
-`command:frame-desktop-action.sh`, the file on `PATH`.
+not launch a second action. R1 stays SteamVR's left click. R3 stays
+SteamVR's right click and is not in the helper's bind list. While the
+trigger is already down, the thumbstick press runs `close` once. The relay
+also sends `chord-click 1`, and ft-screens swallows the controller's right
+click (hand controller or the `ft_pointer` virtual controller) so that
+press is not a right click. A real mouse right click is neither source and
+is still delivered. If the overlay click is the report that arrives first,
+`chord-fired` runs the same close; the latch drops the second report.
+Releasing the trigger before R3 still swallows the matching button-up.
+The second live test showed Trigger+R1 could not do this: every R1 press
+arrived while the guard was disarmed, so the close never ran. A VR game,
+pause, typing leaving the desktop, or the route file disappearing clears
+the modifier. The buttons stay unbound while `controller_in_games` is set.
+The commands are `command:frame-desktop-action.sh`, the file on `PATH`.
 
 ## Relay deployment
 
@@ -219,9 +219,9 @@ The user unit `frametop-input-relay.service` is `Type=notify` with
 Restarting that unit keeps the virtual mouse and keyboard file descriptors
 in systemd's store, so SteamVR does not have to reopen them.
 
-The first live test switched the running relay with a drop-in and merged
-`controller_chords` into the headset rules. That test was rolled back:
-the drop-in is gone, `~/.config/frametop-input.json` is the pre-test copy,
+The live tests switched the running relay with a drop-in and merged
+`controller_chords` into the headset rules, then rolled that back. The
+drop-in is gone, `~/.config/frametop-input.json` is the pre-test copy,
 the unit again runs `frametop-api`, and the virtual devices were reused.
 `vrglobal` was turned back off. Do not restart the relay or launch another
 headset session until that is approved again. After a switch, chords stay

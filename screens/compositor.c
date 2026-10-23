@@ -364,12 +364,13 @@ static void handle_vr_event(const struct ft_event *e, void *data) {
         panel_key(s, e->key, e->pressed);
         return;
     }
-    // Trigger + R1. SteamVR still delivers R1 as a left click, attributed to the
+    // Trigger + R3. SteamVR still delivers R3 as a right click, attributed to the
     // hand controller or to the ft_pointer virtual controller. The relay arms the
     // guard while the trigger is down. A press that was swallowed stays swallowed
-    // if the trigger is released first, so that release is not a left click.
-    // A mouse left click is neither source, so it is delivered while the chord is armed.
-    if (e->type == FT_BUTTON && e->button == BTN_LEFT) {
+    // if the trigger is released first, so that release is not a right click.
+    // A mouse right click is neither source, so it is delivered while the chord is armed.
+    // R1 stays a normal left click.
+    if (e->type == FT_BUTTON && e->button == BTN_RIGHT) {
         bool candidate = ft_chord_is_controller_click(e->controller, e->virtual_pointer, true);
         if (candidate || s->chord.armed || s->chord.held) {
             wlr_log(WLR_INFO, "chord click: hand=%d virtual_pointer=%d armed=%d held=%d pressed=%d",

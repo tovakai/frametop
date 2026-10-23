@@ -127,6 +127,14 @@ class FrameDesktopTests(unittest.TestCase):
                 str(theme / "wallpaper.png"),
             )
             self.assertIn("breeze", (config / "gtk-3.0" / "settings.ini").read_text())
+            app = root / "home" / ".config" / "frametop" / "hyprland"
+            data = root / "home" / ".local" / "share" / "frametop" / "hyprland"
+            self.assertIn("ColorScheme=FrametopEnd4", (app / "kdeglobals").read_text())
+            self.assertTrue((data / "color-schemes" / "FrametopEnd4.colors").is_file())
+            self.assertIn("breeze", (app / "gtk-3.0" / "settings.ini").read_text())
+            compositor = (ROOT / "screens" / "compositor.c").read_text()
+            self.assertIn("e->button == BTN_RIGHT", compositor)
+            self.assertIn("R1 stays a normal left click", compositor)
 
     def test_quickshell_absence_does_not_fail(self):
         with tempfile.TemporaryDirectory() as temp:

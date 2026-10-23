@@ -11,7 +11,7 @@ import controller_chords
 
 SPEC = {
     "modifier": "right/trigger",
-    "swallow_click": "right/bumper",
+    "swallow_click": "right/thumbstick",
     "normal": {
         "right/x": "workspace-prev",
         "right/b": "workspace-next",
@@ -23,7 +23,7 @@ SPEC = {
         "right/b": "browser",
         "right/a": "files",
         "right/y": "launcher",
-        "right/bumper": "close",
+        "right/thumbstick": "close",
     },
 }
 
@@ -87,18 +87,28 @@ def main():
     check("trigger then A opens files", c.event("right/a", 1) == ["files"])
 
     c = fresh()
-    check("R1 is not taken from SteamVR", "right/bumper" not in c.bind_names())
+    check("R3 is not taken from SteamVR", "right/thumbstick" not in c.bind_names())
+    check("R1 is not a chord", "right/bumper" not in c.bind_names() and not c.owns("right/bumper"))
     check("trigger and the face buttons are bound",
           c.bind_names() == ["right/trigger", "right/x", "right/b", "right/a", "right/y"])
+    check("R3 alone does not close", c.event("right/thumbstick", 1) == [] and not c.click_latched)
+    check("R3 release alone is silent", c.event("right/thumbstick", 0) == [])
     c.event("right/trigger", 1)
-    check("a bumper event does not itself close", c.event("right/bumper", 1) == [])
-    check("swallowed click closes once", c.click_down() == ["close"])
-    check("a repeated click report does not close again", c.click_down() == [])
+    check("trigger then R3 closes once", c.event("right/thumbstick", 1) == ["close"])
+    check("the matching click report does not close again", c.click_down() == [])
+    check("R3 release after the close is silent", c.event("right/thumbstick", 0) == [])
+    check("trigger release after the close is silent", c.event("right/trigger", 0) == [])
+    c = fresh()
+    c.event("right/trigger", 1)
+    check("click report before the button still closes once", c.click_down() == ["close"])
+    check("the button after that click does not close again", c.event("right/thumbstick", 1) == [])
+    c.event("right/thumbstick", 0)
     c.click_up()
-    check("another R1 while the trigger stays down closes once more", c.click_down() == ["close"])
-    c.click_up()
-    c.event("right/trigger", 0)
-    check("R1 without the trigger is not a close", c.click_down() == [])
+    check("another R3 while the trigger stays down closes once more",
+          c.event("right/thumbstick", 1) == ["close"])
+    check("releasing the trigger before R3 is silent", c.event("right/trigger", 0) == [] and not c.armed)
+    check("the R3 release after that is silent", c.event("right/thumbstick", 0) == [])
+    check("R3 with the trigger up is not a close", c.event("right/thumbstick", 1) == [] and c.click_down() == [])
 
     c = fresh()
     c.event("right/trigger", 1)

@@ -2415,13 +2415,13 @@ void ft_vr_poll(void (*handle)(const struct ft_event *, void *), void *data) {
                     e.pressed = ev.eventType == vr::VREvent_MouseButtonDown;
                     e.controller = IsHandController(ev.trackedDeviceIndex);
                     e.virtual_pointer = IsVirtualPointer(ev.trackedDeviceIndex);
-                    if (e.button == BTN_LEFT) {
+                    if (e.button == BTN_LEFT || e.button == BTN_RIGHT) {
                         char type[64] = "";
                         const auto cls = vr::VRSystem()->GetTrackedDeviceClass(ev.trackedDeviceIndex);
                         ControllerType(ev.trackedDeviceIndex, type, sizeof type);
                         std::printf(
-                            "chord click source: device=%u class=%d type=%s hand=%d virtual_pointer=%d pressed=%d\n",
-                            ev.trackedDeviceIndex, static_cast<int>(cls), type[0] ? type : "-",
+                            "chord click source: device=%u class=%d type=%s button=%u hand=%d virtual_pointer=%d pressed=%d\n",
+                            ev.trackedDeviceIndex, static_cast<int>(cls), type[0] ? type : "-", e.button,
                             e.controller ? 1 : 0, e.virtual_pointer ? 1 : 0, e.pressed ? 1 : 0);
                         std::fflush(stdout);
                     }

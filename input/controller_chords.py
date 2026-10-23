@@ -5,9 +5,11 @@ invokes one action: the modified action when the trigger is already held,
 otherwise the normal action. Releases do not invoke anything, whichever
 button comes up first. A repeat while the same button stays down is ignored.
 
-R1 (right/bumper) stays SteamVR's left click, so it is not requested from
-the helper. While the trigger is held, ft-screens swallows that click and
-reports it with chord-fired / chord-released.
+R3 (right/thumbstick) stays SteamVR's right click, so it is not requested
+from the helper. A thumbstick press while the trigger is already down closes
+once. ft-screens also swallows that right click and may report it with
+chord-fired; the latch makes the button event and the click one close.
+R3 without the trigger is only the right click.
 """
 
 
@@ -59,8 +61,21 @@ class ControllerChords:
         if not self.owns(button) or value not in (0, 1):
             return []
         if button == self.swallow:
-            # The click path reports this button. A vrbtn would close twice.
-            return []
+            # The overlay click can arrive as well. Whichever report is first
+            # closes; the latch drops the second one.
+            if value == 0:
+                self.down.discard(button)
+                return []
+            if button in self.down or self.click_latched:
+                return []
+            self.down.add(button)
+            if not self.modifier_down:
+                return []
+            self.click_latched = True
+            action = self.modified.get(button)
+            if not action or action in ("none", "key"):
+                return []
+            return [action]
         if button == self.modifier:
             self.modifier_down = value == 1
             if not self.modifier_down:
