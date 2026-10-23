@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Dolphin from the experimental session uses that session's KDE theme.
+# Host Plasma keeps ~/.config and ~/.local/share.
+set -euo pipefail
+export QT_QPA_PLATFORMTHEME="${QT_QPA_PLATFORMTHEME:-kde}"
+export XDG_CONFIG_HOME="${FT_APP_CONFIG_HOME:-$HOME/.config/frametop/hyprland}"
+export XDG_DATA_HOME="${FT_APP_DATA_HOME:-$HOME/.local/share/frametop/hyprland}"
+exec /usr/bin/dolphin "$@"

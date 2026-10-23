@@ -47,7 +47,24 @@ cleanup() {
 trap cleanup EXIT
 trap 'cleanup; exit 143' INT TERM
 frametop_hyprland_route_begin "$runtime" "$parent_wayland" "$config_home"
-mkdir -p "$HOME/.config/frametop/hyprland" "$HOME/.local/state/frametop/hyprland"
+mkdir -p "$HOME/.config/frametop/hyprland" "$HOME/.local/state/frametop/hyprland" \
+  "$HOME/.local/share/frametop/hyprland"
+# The host runtime is replaced below so Hyprland's socket fits in sun_path.
+# PipeWire and Pulse stay on that host runtime; this does not start a second server.
+host_runtime=$XDG_RUNTIME_DIR
+PIPEWIRE_RUNTIME_DIR=
+PULSE_SERVER=
+if [ -S "$host_runtime/pipewire-0" ]; then PIPEWIRE_RUNTIME_DIR=$host_runtime; fi
+if [ -S "$host_runtime/pulse/native" ]; then PULSE_SERVER=unix:$host_runtime/pulse/native; fi
+export XDG_STATE_HOME="$HOME/.local/state/frametop/hyprland"
+export FT_USER_CONFIG_HOME="$config_home"
+export FT_APP_CONFIG_HOME="$HOME/.config/frametop/hyprland"
+export FT_APP_DATA_HOME="$HOME/.local/share/frametop/hyprland"
+theme_env=$("$here/frame-theme.sh" "$config_home" || true)
+if [ -n "${theme_env:-}" ]; then
+  # shellcheck disable=SC2086
+  eval "$theme_env"
+fi
 
 # Disabling Hyprland's systemd/DBus activation-environment imports prevents the
 # nested compositor from redirecting SteamOS's own services into this session.
@@ -55,22 +72,29 @@ mkdir -p "$HOME/.config/frametop/hyprland" "$HOME/.local/state/frametop/hyprland
 # Quickshell is started by the Frame config when the laptop's end-4 tree is present.
 # It is a client: its exit does not stop Hyprland. hypridle and suspend stay off.
 echo "frametop: starting experimental nested Hyprland ($count panel(s))" >&2
-"$here/../scripts/in-box" env -u HYPRLAND_INSTANCE_SIGNATURE \
-  LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" \
-  XDG_RUNTIME_DIR="$runtime" \
-  WAYLAND_DISPLAY="$parent_wayland" \
-  XDG_CONFIG_HOME="$HOME/.config/frametop/hyprland" \
-  XDG_STATE_HOME="$HOME/.local/state/frametop/hyprland" \
-  XDG_CURRENT_DESKTOP=Hyprland \
-  XDG_SESSION_DESKTOP=Hyprland \
-  XDG_SESSION_TYPE=wayland \
-  HYPRLAND_NO_SD_VARS=1 \
-  HYPRLAND_NO_SD_NOTIFY=1 \
-  HYPRLAND_NO_SD_TARGET=1 \
-  FT_SCREEN_COUNT="$count" \
-  FT_HYPRLAND_STARTUP="$here/hyprland-on-start.sh" \
-  FT_FRAME_SESSION="$here" \
-  FT_USER_CONFIG_HOME="$config_home" \
-  FT_HYPR_CONFIG_ROOT="$hypr_root" \
-  PATH="$here/bin:${PATH:-/usr/local/bin:/usr/bin}" \
-  dbus-run-session Hyprland -c "$config"
+launch=(env -u HYPRLAND_INSTANCE_SIGNATURE
+  LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
+  XDG_RUNTIME_DIR="$runtime"
+  WAYLAND_DISPLAY="$parent_wayland"
+  XDG_CONFIG_HOME="$HOME/.config/frametop/hyprland"
+  XDG_STATE_HOME="$HOME/.local/state/frametop/hyprland"
+  XDG_DATA_HOME="$HOME/.local/share/frametop/hyprland"
+  XDG_CURRENT_DESKTOP=Hyprland
+  XDG_SESSION_DESKTOP=Hyprland
+  XDG_SESSION_TYPE=wayland
+  HYPRLAND_NO_SD_VARS=1
+  HYPRLAND_NO_SD_NOTIFY=1
+  HYPRLAND_NO_SD_TARGET=1
+  FT_SCREEN_COUNT="$count"
+  FT_HYPRLAND_STARTUP="$here/hyprland-on-start.sh"
+  FT_FRAME_SESSION="$here"
+  FT_USER_CONFIG_HOME="$config_home"
+  FT_APP_CONFIG_HOME="$HOME/.config/frametop/hyprland"
+  FT_APP_DATA_HOME="$HOME/.local/share/frametop/hyprland"
+  FT_HYPR_CONFIG_ROOT="$hypr_root"
+  PATH="$here/bin:${PATH:-/usr/local/bin:/usr/bin}")
+if [ -n "$PIPEWIRE_RUNTIME_DIR" ]; then launch+=(PIPEWIRE_RUNTIME_DIR="$PIPEWIRE_RUNTIME_DIR"); fi
+if [ -n "$PULSE_SERVER" ]; then launch+=(PULSE_SERVER="$PULSE_SERVER"); fi
+if [ -n "${FONTCONFIG_FILE:-}" ]; then launch+=(FONTCONFIG_FILE="$FONTCONFIG_FILE"); fi
+launch+=(dbus-run-session Hyprland -c "$config")
+"$here/../scripts/in-box" "${launch[@]}"

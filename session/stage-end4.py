@@ -127,6 +127,56 @@ SHELL_PATCHES = (
         "            if (Quickshell.env(\"FT_FRAME_SESSION\")) return\n"
         "            if (Config.ready) checkConflictsProc.running = true",
     ),
+    (
+        "quickshell/ii/services/Brightness.qml",
+        "    function increaseBrightness(): void {\n",
+        "    function increaseBrightness(): void {\n"
+        "        if (Quickshell.env(\"FT_FRAME_SESSION\")) return\n",
+    ),
+    (
+        "quickshell/ii/services/Brightness.qml",
+        "    function decreaseBrightness(): void {\n",
+        "    function decreaseBrightness(): void {\n"
+        "        if (Quickshell.env(\"FT_FRAME_SESSION\")) return\n",
+    ),
+    (
+        "quickshell/ii/services/Brightness.qml",
+        "    onMonitorsChanged: {\n        ddcMonitors = [];\n",
+        "    onMonitorsChanged: {\n"
+        "        if (Quickshell.env(\"FT_FRAME_SESSION\")) return\n"
+        "        ddcMonitors = [];\n",
+    ),
+    (
+        "quickshell/ii/modules/common/widgets/MaterialSymbol.qml",
+        "import qs.modules.common\nimport QtQuick\n",
+        "import qs.modules.common\nimport QtQuick\nimport Quickshell\n",
+    ),
+    (
+        "quickshell/ii/modules/common/widgets/MaterialSymbol.qml",
+        "    renderType: Text.NativeRendering\n",
+        "    // Qt's native text path on this container drops Material Symbol ligatures.\n"
+        "    renderType: Quickshell.env(\"FT_FRAME_SESSION\") ? Text.QtRendering : Text.NativeRendering\n",
+    ),
+    (
+        "quickshell/ii/services/ai/ChatGptBridge.qml",
+        "import QtQuick\nimport Quickshell.Io\n",
+        "import QtQuick\nimport Quickshell\nimport Quickshell.Io\n",
+    ),
+    (
+        "quickshell/ii/services/ai/ChatGptBridge.qml",
+        "    property bool onlineAllowed: true\n",
+        "    property bool onlineAllowed: Quickshell.env(\"FT_FRAME_SESSION\") === \"\"\n",
+    ),
+    (
+        "quickshell/ii/scripts/colors/random/random_konachan_wall.sh",
+        'illogicalImpulseConfigPath="$HOME/.config/illogical-impulse/config.json"\n',
+        'illogicalImpulseConfigPath="${XDG_CONFIG_HOME:-$HOME/.config}/illogical-impulse/config.json"\n',
+    ),
+    (
+        "quickshell/ii/scripts/colors/random/random_osu_wall.sh",
+        'illogicalImpulseConfigPath="$HOME/.config/illogical-impulse/config.json"\n',
+        'illogicalImpulseConfigPath="${XDG_CONFIG_HOME:-$HOME/.config}/illogical-impulse/config.json"\n',
+    ),
 )
 
 

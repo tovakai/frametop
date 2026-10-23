@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# Read-only stand-in for the nmcli calls end-4's network service makes.
+# The Fedora container cannot authenticate to SteamOS's system bus, so this
+# reports the session's default route and does not change radios or profiles.
+set -u
+if [ -z "${FT_NET_ROUTE_LINE+x}" ]; then
+  route_line=$(ip -4 route show default 2>/dev/null | head -n 1 || true)
+else
+  route_line=$FT_NET_ROUTE_LINE
+fi
+if [ -z "${FT_NET_IFACE+x}" ]; then
+  iface=${route_line##* dev }
+  iface=${iface%% *}
+else
+  iface=$FT_NET_IFACE
+fi
+sys=${FT_NET_SYS:-/sys/class/net}
+kind=ethernet
+if [ -n "$iface" ] && { [ -d "$sys/$iface/wireless" ] || [ -d "$sys/$iface/phy80211" ]; }; then
+  kind=wifi
+fi
+ssid=${FT_NET_SSID:-}
+if [ -z "$ssid" ] && [ -n "$iface" ] && command -v iw >/dev/null 2>&1; then
+  ssid=$(iw dev "$iface" link 2>/dev/null | sed -n 's/.*SSID: //p' | head -n 1 || true)
+fi
+if [ -z "$ssid" ]; then
+  ssid=${iface:-offline}
+fi
+connected=0
+if [ -n "$iface" ] && [ -n "$route_line" ]; then
+  connected=1
+fi
+
+args="$*"
+case $args in
+  "monitor")
+    # The shell keeps this process open. There is no event stream without
+    # NetworkManager; the other polls still refresh the displayed state.
+    sleep "${FT_NMCLI_MONITOR_SEC:-3600}"
+    ;;
+  "-t -f TYPE,STATE d status")
+    if [ "$connected" = 1 ]; then
+      printf '%s:connected\n' "$kind"
+    else
+      printf '%s:disconnected\n' "$kind"
+    fi
+    ;;
+  "-t -f CONNECTIVITY g")
+    if [ "$connected" = 1 ]; then printf 'full\n'; else printf 'none\n'; fi
+    ;;
+  "-t -f NAME c show --active")
+    if [ "$connected" = 1 ]; then printf '%s\n' "$ssid"; fi
+    ;;
+  "radio wifi")
+    if [ "$kind" = wifi ] && [ "$connected" = 1 ]; then printf 'enabled\n'; else printf 'disabled\n'; fi
+    ;;
+  "-f IN-USE,SIGNAL,SSID device wifi")
+    printf 'IN-USE SIGNAL SSID\n'
+    if [ "$kind" = wifi ] && [ "$connected" = 1 ]; then
+      printf '* %s %s\n' "${FT_NET_SIGNAL:-70}" "$ssid"
+    fi
+    ;;
+  "-g ACTIVE,SIGNAL,FREQ,SSID,BSSID,SECURITY d w"|"dev wifi list --rescan yes")
+    if [ "$kind" = wifi ] && [ "$connected" = 1 ]; then
+      printf 'yes:%s:2412:%s::\n' "${FT_NET_SIGNAL:-70}" "$ssid"
+    fi
+    ;;
+  radio\ wifi\ *|dev\ wifi\ connect\ *|connection\ down\ *|connection\ modify\ *)
+    echo "frametop: the headset radio stays with SteamOS" >&2
+    exit 1
+    ;;
+  *)
+    exit 0
+    ;;
+esac

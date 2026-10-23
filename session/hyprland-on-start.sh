@@ -18,6 +18,10 @@ for ((i = 1; i < count; i++)); do
     exit 1
   fi
 done
+# Clipboard history for this Wayland session only. It exits when the socket does.
+if command -v cliphist >/dev/null 2>&1 && command -v wl-paste >/dev/null 2>&1; then
+  setsid wl-paste --watch cliphist store >/dev/null 2>&1 < /dev/null &
+fi
 if command -v foot >/dev/null 2>&1; then
   exec foot
 elif command -v kitty >/dev/null 2>&1; then

@@ -41,6 +41,13 @@ packages=(
   # fonts are staged beside the config, not installed on the host.
   dolphin firefox hicolor-icon-theme breeze-icon-theme
   google-noto-sans-fonts google-noto-sans-mono-fonts wl-clipboard
+  # end-4 tools. These are clients and generators, not host services:
+  # jq and the image tools run the wallpaper and color scripts, cliphist
+  # stores the session clipboard, qalc is the launcher calculator, and
+  # grim/slurp take a panel shot. NetworkManager, BlueZ, and UPower are
+  # not installed here; the container cannot attach to SteamOS's system bus.
+  jq libqalculate playerctl grim slurp libnotify cliphist python3-pillow
+  xdg-user-dirs ffmpeg-free iw
 )
 
 on_frame_script "$FRAME_REPO" "${packages[@]}" <<'EOF'

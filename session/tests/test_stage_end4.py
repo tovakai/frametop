@@ -66,6 +66,24 @@ class StageEnd4Tests(unittest.TestCase):
             killer = qs / "services" / "ConflictKiller.qml"
             killer.parent.mkdir(parents=True)
             killer.write_text("            if (Config.ready) checkConflictsProc.running = true\n")
+            bright = qs / "services" / "Brightness.qml"
+            bright.write_text(
+                "    function increaseBrightness(): void {\n"
+                "    function decreaseBrightness(): void {\n"
+                "    onMonitorsChanged: {\n        ddcMonitors = [];\n"
+            )
+            symbol = qs / "modules" / "common" / "widgets" / "MaterialSymbol.qml"
+            symbol.parent.mkdir(parents=True)
+            symbol.write_text("import qs.modules.common\nimport QtQuick\n    renderType: Text.NativeRendering\n")
+            chat = qs / "services" / "ai" / "ChatGptBridge.qml"
+            chat.parent.mkdir(parents=True)
+            chat.write_text("import QtQuick\nimport Quickshell.Io\n    property bool onlineAllowed: true\n")
+            for name in ("random_konachan_wall.sh", "random_osu_wall.sh"):
+                script = qs / "scripts" / "colors" / "random" / name
+                script.parent.mkdir(parents=True, exist_ok=True)
+                script.write_text(
+                    'illogicalImpulseConfigPath="$HOME/.config/illogical-impulse/config.json"\n'
+                )
             (qs / "shell.qml").write_text("import Quickshell\n")
             impulse = root / "impulse"
             (impulse / "actions").mkdir(parents=True)
@@ -89,6 +107,17 @@ class StageEnd4Tests(unittest.TestCase):
             self.assertIn("padding: 5", (dest / "quickshell/ii/modules/ii/bar/BarContent.qml").read_text())
             killer_text = (dest / "quickshell/ii/services/ConflictKiller.qml").read_text()
             self.assertIn("FT_FRAME_SESSION", killer_text)
+            bright_text = (dest / "quickshell/ii/services/Brightness.qml").read_text()
+            self.assertEqual(bright_text.count('if (Quickshell.env("FT_FRAME_SESSION")) return'), 3)
+            symbol_text = (dest / "quickshell/ii/modules/common/widgets/MaterialSymbol.qml").read_text()
+            self.assertIn("Text.QtRendering", symbol_text)
+            self.assertIn("import Quickshell", symbol_text)
+            chat_text = (dest / "quickshell/ii/services/ai/ChatGptBridge.qml").read_text()
+            self.assertIn('Quickshell.env("FT_FRAME_SESSION") === ""', chat_text)
+            for name in ("random_konachan_wall.sh", "random_osu_wall.sh"):
+                script_text = (dest / "quickshell/ii/scripts/colors/random" / name).read_text()
+                self.assertIn("${XDG_CONFIG_HOME:-$HOME/.config}", script_text)
+                self.assertNotIn('"$HOME/.config/illogical-impulse', script_text)
             self.assertTrue((dest / "illogical-impulse" / "config.json").is_file())
             self.assertFalse((dest / "illogical-impulse" / "installed_listfile").exists())
             theme = dest.parent / "theme"

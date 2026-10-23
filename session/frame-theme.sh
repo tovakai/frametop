@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Point the staged end-4 shell at its colors, wallpaper, and fonts.
-# Writes only the stage copy and this session's state directory.
+# Writes the stage copy, this session's state, and the session's app theme.
+# It does not write ~/.config or ~/.local/share.
 set -eu
+here=$(dirname "$(readlink -f "$0")")
 config_home=${1:-${FT_USER_CONFIG_HOME:-$HOME/.config}}
 theme=$(readlink -f "$config_home/../theme" 2>/dev/null || true)
 state_root=${XDG_STATE_HOME:-$HOME/.local/state}
@@ -30,6 +32,15 @@ gtk=$config_home/gtk-3.0
 mkdir -p "$gtk"
 if [ ! -f "$gtk/settings.ini" ]; then
   printf '%s\n' '[Settings]' 'gtk-icon-theme-name=breeze' >"$gtk/settings.ini"
+fi
+app_config=${FT_APP_CONFIG_HOME:-$HOME/.config/frametop/hyprland}
+app_data=${FT_APP_DATA_HOME:-$HOME/.local/share/frametop/hyprland}
+colors=$qs_state/user/generated/colors.json
+if [ ! -f "$colors" ] && [ -n "${theme:-}" ] && [ -f "$theme/quickshell/user/generated/colors.json" ]; then
+  colors=$theme/quickshell/user/generated/colors.json
+fi
+if [ -f "$colors" ]; then
+  python3 "$here/frame-kde-theme.py" "$colors" "$app_config" "$app_data"
 fi
 if [ -n "${theme:-}" ] && [ -d "$theme/fonts" ]; then
   conf=${XDG_RUNTIME_DIR:-/tmp}/frametop-fonts.conf
