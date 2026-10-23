@@ -77,7 +77,10 @@ class StageEnd4Tests(unittest.TestCase):
             symbol.write_text("import qs.modules.common\nimport QtQuick\n    renderType: Text.NativeRendering\n")
             chat = qs / "services" / "ai" / "ChatGptBridge.qml"
             chat.parent.mkdir(parents=True)
-            chat.write_text("import QtQuick\nimport Quickshell.Io\n    property bool onlineAllowed: true\n")
+            chat.write_text(
+                "import QtQuick\nimport Quickshell.Io\n    property bool onlineAllowed: true\n"
+                "        command: [\"/home/tovakai/Projects/quickshell-chatgpt/.venv/bin/python\", \"-m\", \"bridge\", \"serve\"]\n"
+            )
             for name in ("random_konachan_wall.sh", "random_osu_wall.sh"):
                 script = qs / "scripts" / "colors" / "random" / name
                 script.parent.mkdir(parents=True, exist_ok=True)
@@ -114,6 +117,8 @@ class StageEnd4Tests(unittest.TestCase):
             self.assertIn("import Quickshell", symbol_text)
             chat_text = (dest / "quickshell/ii/services/ai/ChatGptBridge.qml").read_text()
             self.assertIn('Quickshell.env("FT_FRAME_SESSION") === ""', chat_text)
+            self.assertIn('test -z \\"$FT_FRAME_SESSION\\"', chat_text)
+            self.assertNotIn("/home/tovakai/Projects/quickshell-chatgpt/.venv/bin/python\", \"-m\"", chat_text)
             for name in ("random_konachan_wall.sh", "random_osu_wall.sh"):
                 script_text = (dest / "quickshell/ii/scripts/colors/random" / name).read_text()
                 self.assertIn("${XDG_CONFIG_HOME:-$HOME/.config}", script_text)

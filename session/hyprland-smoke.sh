@@ -32,10 +32,14 @@ if [ "${1:-}" = --inner ]; then
   # Hyprland's socket is $XDG_RUNTIME_DIR/hypr/<abi signature>/.socket2.sock.
   # sun_path holds 108 bytes; nesting it under the user runtime directory overflows it and
   # Hyprland turns IPC off, so startup cannot add outputs.
+  host_runtime=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
   runtime=$(mktemp -d /tmp/ftH.XXXXXX)
   trap 'rm -rf -- "$runtime" || true' EXIT
   mkdir -p "$runtime/config" "$runtime/state"
   export XDG_RUNTIME_DIR="$runtime"
+  if [ -S "$host_runtime/pipewire-0" ]; then export PIPEWIRE_RUNTIME_DIR=$host_runtime; fi
+  if [ -S "$host_runtime/pulse/native" ]; then export PULSE_SERVER=unix:$host_runtime/pulse/native; fi
+  export PATH="$here/bin:${PATH:-/usr/bin}"
   export XDG_CONFIG_HOME="$runtime/config"
   export XDG_STATE_HOME="$runtime/state"
   export XDG_CURRENT_DESKTOP=Hyprland XDG_SESSION_TYPE=wayland XDG_SESSION_DESKTOP=Hyprland
