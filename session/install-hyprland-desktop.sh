@@ -59,9 +59,12 @@ copy_tree() {
     mkdir -p "$release/build/aquamarine"
     cp -a "$source/build/aquamarine/lib" "$release/build/aquamarine/lib"
   fi
-  # Default tree path. The persistent copy below is what the session actually reads.
+  # Default tree path. The persistent copies below are what the session actually reads.
   mkdir -p "$release/stage"
   cp -a "$source/stage/config" "$release/stage/config"
+  if [ -d "$source/stage/theme" ]; then
+    cp -a "$source/stage/theme" "$release/stage/theme"
+  fi
   cat > "$release/VERSION" <<EOF
 commit=$rev
 source=$source
@@ -140,10 +143,6 @@ install_entries() {
   sed "s|@PLASMA_LAUNCHER@|$home/.local/bin/frametop-plasma|" \
     "$release/session/plasma-desktop.desktop" > "$apps/frametop-plasma-desktop.desktop"
   printf '%s\n' hyprland > "$home/.config/frametop/desktop-selection"
-  if [ ! -f "$pin/config/quickshell/ii/shell.qml" ]; then
-    mkdir -p "$pin/config"
-    cp -a "$source/stage/config/." "$pin/config/"
-  fi
 }
 
 install_relay() {
@@ -172,12 +171,22 @@ rules_path.write_text(json.dumps(rules, indent=2) + "\n", encoding="utf-8")
 PY
 }
 
+seed_persistent() {
+  # Config and fonts survive a later release. Seed each once.
+  if [ ! -e "$pin/config/quickshell/ii/shell.qml" ]; then
+    mkdir -p "$pin/config"
+    cp -a "$source/stage/config/." "$pin/config/"
+  fi
+  # frame-theme.sh reads fonts from the directory beside this config.
+  # Leave an existing theme alone so a later install does not replace a wallpaper.
+  if [ ! -d "$pin/theme/fonts" ] && [ -d "$source/stage/theme/fonts" ]; then
+    mkdir -p "$pin/theme"
+    cp -a "$source/stage/theme/fonts" "$pin/theme/fonts"
+  fi
+}
+
 copy_tree
-# Persistent end-4 config survives a later release. Seed it once from this tree.
-if [ ! -e "$pin/config/quickshell/ii/shell.qml" ]; then
-  mkdir -p "$pin/config"
-  cp -a "$source/stage/config/." "$pin/config/"
-fi
+seed_persistent
 save_rollback
 install_entries
 if [ "$offline" != 1 ]; then
