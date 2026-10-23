@@ -46,7 +46,7 @@ packages=(
   # stores the session clipboard, qalc is the launcher calculator, and
   # grim/slurp take a panel shot. NetworkManager, BlueZ, and UPower are
   # not installed here; the container cannot attach to SteamOS's system bus.
-  jq libqalculate playerctl grim slurp libnotify cliphist python3-pillow
+  jq qalculate playerctl grim slurp libnotify cliphist python3-pillow
   xdg-user-dirs ffmpeg-free iw
 )
 

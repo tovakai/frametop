@@ -21,7 +21,7 @@ icon widget uses Qt's own renderer while `FT_FRAME_SESSION` is set. Building
 | `curl` | Konachan and other downloads | Already in the container |
 | ImageMagick, `ffmpeg-free` | Wallpaper probes and video wallpapers | ImageMagick was already installed; `ffmpeg-free` is added |
 | `python3-pillow` | Image helpers under `scripts/` | Install in the container |
-| `qalc` (`libqalculate`) | Calculator in the launcher | Install in the container |
+| `qalc` (`qalculate`) | Calculator in the launcher | Install in the container |
 | `cliphist`, `wl-paste` | Clipboard history | Install `cliphist`. The session runs `wl-paste --watch cliphist store` on its own Wayland socket |
 | `grim`, `slurp` | Region screenshots | Install in the container |
 | `libnotify` | `notify-send` from scripts | Install in the container. The shell is the notification server on the session bus |
