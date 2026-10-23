@@ -32,7 +32,13 @@ icon widget uses Qt's own renderer while `FT_FRAME_SESSION` is set. Building
 The Konachan and osu wallpaper scripts on the laptop read
 `~/.config/illogical-impulse/config.json`. The staged copies use
 `$XDG_CONFIG_HOME`, which the session sets to the staged config. They do
-not read or write the host config.
+not read or write the host config. A download that returns no image is
+dropped, and the current wallpaper stays.
+
+`kdialog` is the "Choose file" button. It opens on the Hyprland panel.
+Upscayl is an x86_64 Arch application, so it is not installed. An image
+smaller than the panel is scaled to the panel with ImageMagick before it
+is applied. There is no Upscayl prompt.
 
 ## Theme
 

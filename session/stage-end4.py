@@ -187,6 +187,72 @@ SHELL_PATCHES = (
         'illogicalImpulseConfigPath="$HOME/.config/illogical-impulse/config.json"\n',
         'illogicalImpulseConfigPath="${XDG_CONFIG_HOME:-$HOME/.config}/illogical-impulse/config.json"\n',
     ),
+    (
+        "quickshell/ii/scripts/colors/switchwall.sh",
+        '        check_and_prompt_upscale "$imgpath" &\n',
+        '        if [ -n "${FT_FRAME_SESSION:-}" ] && [ -f "$FT_FRAME_SESSION/frame-wallpaper.sh" ]; then\n'
+        '            # shellcheck disable=SC1091\n'
+        '            . "$FT_FRAME_SESSION/frame-wallpaper.sh"\n'
+        '            imgpath=$(frame_scale_wallpaper "$imgpath")\n'
+        '        else\n'
+        '            check_and_prompt_upscale "$imgpath" &\n'
+        '        fi\n',
+    ),
+    (
+        "quickshell/ii/scripts/colors/switchwall.sh",
+        '        cd "$(xdg-user-dir PICTURES)/Wallpapers/showcase" 2>/dev/null || cd "$(xdg-user-dir PICTURES)/Wallpapers" 2>/dev/null || cd "$(xdg-user-dir PICTURES)" || return 1\n'
+        '        imgpath="$(kdialog --getopenfilename . --title \'Choose wallpaper\')"\n',
+        '        if [ -n "${FT_FRAME_SESSION:-}" ] && [ -f "$FT_FRAME_SESSION/frame-wallpaper.sh" ]; then\n'
+        '            # shellcheck disable=SC1091\n'
+        '            . "$FT_FRAME_SESSION/frame-wallpaper.sh"\n'
+        '            imgpath=$(frame_pick_wallpaper) || exit 0\n'
+        '        else\n'
+        '            cd "$(xdg-user-dir PICTURES)/Wallpapers/showcase" 2>/dev/null || cd "$(xdg-user-dir PICTURES)/Wallpapers" 2>/dev/null || cd "$(xdg-user-dir PICTURES)" || return 1\n'
+        '            imgpath="$(kdialog --getopenfilename . --title \'Choose wallpaper\')"\n'
+        '        fi\n',
+    ),
+    (
+        "quickshell/ii/scripts/colors/random/random_konachan_wall.sh",
+        "ext=$(echo \"$link\" | awk -F. '{print $NF}')\n",
+        'if [ -n "${FT_FRAME_SESSION:-}" ] && [ -f "$FT_FRAME_SESSION/frame-wallpaper.sh" ]; then\n'
+        '    # shellcheck disable=SC1091\n'
+        '    . "$FT_FRAME_SESSION/frame-wallpaper.sh"\n'
+        '    ext=$(frame_image_ext "$link") || exit 1\n'
+        'else\n'
+        "    ext=$(echo \"$link\" | awk -F. '{print $NF}')\n"
+        'fi\n',
+    ),
+    (
+        "quickshell/ii/scripts/colors/random/random_konachan_wall.sh",
+        'curl -A "$userAgent" "$link" -o "$downloadPath"\n',
+        'curl -A "$userAgent" "$link" -o "$downloadPath"\n'
+        'if [ -n "${FT_FRAME_SESSION:-}" ] && [ -f "$FT_FRAME_SESSION/frame-wallpaper.sh" ]; then\n'
+        '    # shellcheck disable=SC1091\n'
+        '    . "$FT_FRAME_SESSION/frame-wallpaper.sh"\n'
+        '    frame_require_download "$downloadPath" || exit 1\n'
+        'fi\n',
+    ),
+    (
+        "quickshell/ii/scripts/colors/random/random_osu_wall.sh",
+        "ext=$(echo \"$link\" | awk -F. '{print $NF}')\n",
+        'if [ -n "${FT_FRAME_SESSION:-}" ] && [ -f "$FT_FRAME_SESSION/frame-wallpaper.sh" ]; then\n'
+        '    # shellcheck disable=SC1091\n'
+        '    . "$FT_FRAME_SESSION/frame-wallpaper.sh"\n'
+        '    ext=$(frame_image_ext "$link") || exit 1\n'
+        'else\n'
+        "    ext=$(echo \"$link\" | awk -F. '{print $NF}')\n"
+        'fi\n',
+    ),
+    (
+        "quickshell/ii/scripts/colors/random/random_osu_wall.sh",
+        'curl "$link" -o "$downloadPath"\n',
+        'curl "$link" -o "$downloadPath"\n'
+        'if [ -n "${FT_FRAME_SESSION:-}" ] && [ -f "$FT_FRAME_SESSION/frame-wallpaper.sh" ]; then\n'
+        '    # shellcheck disable=SC1091\n'
+        '    . "$FT_FRAME_SESSION/frame-wallpaper.sh"\n'
+        '    frame_require_download "$downloadPath" || exit 1\n'
+        'fi\n',
+    ),
 )
 
 

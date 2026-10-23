@@ -48,6 +48,9 @@ packages=(
   # not installed here; the container cannot attach to SteamOS's system bus.
   jq qalculate playerctl grim slurp libnotify cliphist python3-pillow
   xdg-user-dirs ffmpeg-free iw
+  # end-4's "Choose file" wallpaper button runs kdialog. Upscayl is not
+  # packaged for this ARM64 container; ImageMagick scales the image instead.
+  kdialog
 )
 
 on_frame_script "$FRAME_REPO" "${packages[@]}" <<'EOF'
