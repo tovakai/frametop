@@ -80,6 +80,7 @@ class StageEnd4Tests(unittest.TestCase):
             chat.write_text(
                 "import QtQuick\nimport Quickshell.Io\n    property bool onlineAllowed: true\n"
                 "        command: [\"/home/tovakai/Projects/quickshell-chatgpt/.venv/bin/python\", \"-m\", \"bridge\", \"serve\"]\n"
+                "        workingDirectory: \"/home/tovakai/Projects/quickshell-chatgpt\"\n"
             )
             for name in ("random_konachan_wall.sh", "random_osu_wall.sh"):
                 script = qs / "scripts" / "colors" / "random" / name
@@ -116,7 +117,8 @@ class StageEnd4Tests(unittest.TestCase):
             self.assertIn("Text.QtRendering", symbol_text)
             self.assertIn("import Quickshell", symbol_text)
             chat_text = (dest / "quickshell/ii/services/ai/ChatGptBridge.qml").read_text()
-            self.assertIn('Quickshell.env("FT_FRAME_SESSION") === ""', chat_text)
+            self.assertIn("property bool onlineAllowed: false", chat_text)
+            self.assertIn('workingDirectory: "/tmp"', chat_text)
             self.assertIn('test -z \\"$FT_FRAME_SESSION\\"', chat_text)
             self.assertNotIn("/home/tovakai/Projects/quickshell-chatgpt/.venv/bin/python\", \"-m\"", chat_text)
             for name in ("random_konachan_wall.sh", "random_osu_wall.sh"):

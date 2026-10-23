@@ -165,12 +165,17 @@ SHELL_PATCHES = (
     (
         "quickshell/ii/services/ai/ChatGptBridge.qml",
         "    property bool onlineAllowed: true\n",
-        "    property bool onlineAllowed: Quickshell.env(\"FT_FRAME_SESSION\") === \"\"\n",
+        "    property bool onlineAllowed: false\n",
     ),
     (
         "quickshell/ii/services/ai/ChatGptBridge.qml",
         "        command: [\"/home/tovakai/Projects/quickshell-chatgpt/.venv/bin/python\", \"-m\", \"bridge\", \"serve\"]\n",
         "        command: [\"/usr/bin/bash\", \"-c\", \"test -z \\\"$FT_FRAME_SESSION\\\" && test -x /home/tovakai/Projects/quickshell-chatgpt/.venv/bin/python && exec /home/tovakai/Projects/quickshell-chatgpt/.venv/bin/python -m bridge serve\"]\n",
+    ),
+    (
+        "quickshell/ii/services/ai/ChatGptBridge.qml",
+        "        workingDirectory: \"/home/tovakai/Projects/quickshell-chatgpt\"\n",
+        "        workingDirectory: \"/tmp\"\n",
     ),
     (
         "quickshell/ii/scripts/colors/random/random_konachan_wall.sh",

@@ -82,7 +82,7 @@ and hypridle stay out of the session launcher.
 
 | Laptop piece | Frame |
 | --- | --- |
-| ChatGPT bridge at `/home/tovakai/Projects/quickshell-chatgpt` | Not started. The staged command is `/usr/bin/bash` and exits immediately when `FT_FRAME_SESSION` is set. The venv is not copied |
+| ChatGPT bridge at `/home/tovakai/Projects/quickshell-chatgpt` | Not started. The staged copy sets `onlineAllowed: false`, and the command exits without the laptop venv. The venv is not copied |
 | Conflict killer (`killall kded6`) | Returns before doing anything when `FT_FRAME_SESSION` is set |
 | Monitor brightness, DDC, suspend | No-ops or hidden |
 | Host Plasma session bus | Not imported. The nested session has its own bus |

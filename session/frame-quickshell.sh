@@ -25,6 +25,11 @@ if [ ! -f "$shell" ]; then
   echo "frametop: Quickshell config $shell is not on this machine; continuing without it" >&2
   exit 0
 fi
+# cliphist list exits 1 until the database has an entry. Seed it before
+# the shell's first refresh. The watcher lives in hyprland-on-start.sh.
+if command -v cliphist >/dev/null 2>&1; then
+  printf ' ' | cliphist store >/dev/null 2>&1 || true
+fi
 if [ -n "${FT_QS_LOG:-}" ]; then
   exec qs -c "$cfg" >"$FT_QS_LOG" 2>&1
 fi
