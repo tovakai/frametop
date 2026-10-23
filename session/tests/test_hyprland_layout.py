@@ -182,6 +182,16 @@ class HyprlandLayoutTests(unittest.TestCase):
         self.assertEqual(data["screens"][0]["metres"], 1.5)
         self.assertEqual(data["mode"], "custom")
 
+    def test_alongside_names_do_not_replace_the_installed_socket(self):
+        self.assertEqual(layout.socket_name(), "ft-hyprland-0")
+        self.assertEqual(layout.control_name(), "ft_hyprland")
+        os.environ["FT_HYPRLAND_SOCKET"] = "ft-hypr-exp-0"
+        os.environ["FT_HYPRLAND_CONTROL"] = "ft_hypr_exp"
+        self.addCleanup(os.environ.pop, "FT_HYPRLAND_SOCKET", None)
+        self.addCleanup(os.environ.pop, "FT_HYPRLAND_CONTROL", None)
+        self.assertEqual(layout.socket_name(), "ft-hypr-exp-0")
+        self.assertEqual(layout.control_name(), "ft_hypr_exp")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -134,7 +134,9 @@ class Backend(QObject):
         return hyprland_layout.active()
 
     def _screens_addr(self):
-        return FT_HYPR_SCREENS if self._hypr() else FT_SCREENS
+        if self._hypr():
+            return b"\0" + hyprland_layout.control_name().encode()
+        return FT_SCREENS
 
     def _conf(self):
         conf = ft_layout.read_conf()
@@ -151,7 +153,7 @@ class Backend(QObject):
         # from the container, so ft_layout.nested_env() doesn't work here).
         uid = os.getuid()
         if self._hypr():
-            running = os.path.exists(f"/run/user/{uid}/ft-hyprland-0")
+            running = os.path.exists(f"/run/user/{uid}/{hyprland_layout.socket_name()}")
         else:
             running = os.path.exists(f"/run/user/{uid}/frametop/wayland-0")
         count = self._screens_running() if running and ft_layout.backend() == "screens" else 0

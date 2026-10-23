@@ -372,6 +372,16 @@ def use_named(layout, name):
     layout["active"] = name
 
 
+def control_name():
+    """Abstract control socket for this Hyprland desktop, without the leading NUL."""
+    return os.environ.get("FT_HYPRLAND_CONTROL") or os.environ.get("FT_HYPR_CONTROL") or "ft_hyprland"
+
+
+def socket_name():
+    """ft-screens Wayland socket for this Hyprland desktop."""
+    return os.environ.get("FT_HYPRLAND_SOCKET") or "ft-hyprland-0"
+
+
 def active():
     """True when Display Settings should edit this layout instead of Plasma's."""
     forced = os.environ.get("FT_DISPLAY_COMPOSITOR", "")
