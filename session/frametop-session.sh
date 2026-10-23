@@ -74,11 +74,20 @@ if [ "${1:-}" != --inner ]; then
   # One desktop at a time. Each compositor is identified by its socket, so
   # stopping Plasma's ft-screens does not kill a Hyprland one, or the reverse.
   if [ "$desktop" = hyprland ]; then
-    if pgrep -f '[f]t-screens --socket ft-hyprland-0' >/dev/null; then
+    # FT_HYPRLAND_ALONGSIDE=1 keeps the installed desktop. It uses another
+    # socket, control name, and overlay prefix, and it does not stop Plasma.
+    hypr_socket=ft-hyprland-0
+    if [ "${FT_HYPRLAND_ALONGSIDE:-}" = 1 ]; then
+      hypr_socket=${FT_HYPRLAND_SOCKET:-ft-hypr-exp-0}
+      export FT_HYPRLAND_SOCKET=$hypr_socket
+      export FT_HYPRLAND_CONTROL=${FT_HYPRLAND_CONTROL:-ft_hypr_exp}
+      export FT_OVERLAY_PREFIX=${FT_OVERLAY_PREFIX:-frametop.hyprx}
+    fi
+    if pgrep -f "[f]t-screens --socket ${hypr_socket}" >/dev/null; then
       echo "Hyprland desktop is already running" >&2
       exit 0
     fi
-    if pgrep -f '[f]t-screens --socket ft-screens-0' >/dev/null; then
+    if [ "${FT_HYPRLAND_ALONGSIDE:-}" != 1 ] && pgrep -f '[f]t-screens --socket ft-screens-0' >/dev/null; then
       echo "frametop: stopping the Plasma VR desktop before Hyprland" >&2
       "$here/plasma-stop.sh"
       for _ in $(seq 40); do
@@ -146,7 +155,7 @@ if [ "${1:-}" != --inner ]; then
     echo "frametop: Hyprland desktop: ${FT_HYPR_OUTPUTS} output(s), primary ${FT_HYPRLAND_SCREEN} (the saved layout is not used)" >&2
     echo "frametop: $(date -Is) Hyprland desktop from $here" >> /tmp/frametop-hyprland-session.log
     # Plasma already owns frametop.screen.1. These panels need their own overlay keys.
-    export FT_OVERLAY_PREFIX=frametop.hypr
+    export FT_OVERLAY_PREFIX="${FT_OVERLAY_PREFIX:-frametop.hypr}"
     screen_argv=()
     for spec_one in $screen_list; do
       screen_argv+=(--screen "$spec_one")

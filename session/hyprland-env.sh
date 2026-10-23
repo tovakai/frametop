@@ -34,9 +34,9 @@ frametop_prepend_aquamarine() {
 
 # Experimental VR launch. Its own sockets, never the saved Plasma layout
 # (ft-layout screen-args). The default panel is still 1920x1080 at 1.5 m.
-FT_HYPRLAND_SOCKET=ft-hyprland-0
-FT_HYPRLAND_CONTROL=ft_hyprland
-FT_HYPRLAND_SCREEN=1920x1080@1.5
+FT_HYPRLAND_SOCKET=${FT_HYPRLAND_SOCKET:-ft-hyprland-0}
+FT_HYPRLAND_CONTROL=${FT_HYPRLAND_CONTROL:-ft_hyprland}
+FT_HYPRLAND_SCREEN=${FT_HYPRLAND_SCREEN:-1920x1080@1.5}
 
 # Host-side description of the one nested session. The relay and
 # frame-desktop-action.sh read it; they do not search /tmp/ftH.*.

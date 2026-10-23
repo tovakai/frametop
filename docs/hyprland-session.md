@@ -63,8 +63,11 @@ keys stay the ones in the end-4 config. A controller click focuses the
 monitor whose panel was hit.
 
 The installed pin is not changed by checking out this branch. A live
-multiscreen session uses the experimental checkout and `ft-hyprland-0`,
-and it is not started from here until that launch is authorized.
+multiscreen session from this checkout uses
+`FT_HYPRLAND_ALONGSIDE=1`. That selects socket `ft-hypr-exp-0`, control
+name `ft_hypr_exp`, and overlay prefix `frametop.hyprx`, and it leaves
+the installed desktop on `ft-hyprland-0` running. It is not started from
+here until that launch is authorized.
 
 ## Not supported on this desktop
 
