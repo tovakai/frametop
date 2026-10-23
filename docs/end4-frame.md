@@ -35,7 +35,10 @@ The Konachan and osu wallpaper scripts on the laptop read
 not read or write the host config. A download that returns no image is
 dropped, and the current wallpaper stays.
 
-`kdialog` is the "Choose file" button. It opens on the Hyprland panel.
+`kdialog` is the "Choose file" button. It opens on the Hyprland panel
+with `QT_QPA_PLATFORMTHEME=kde` and the session config home, where the
+file dialog is set to the thumbnail view (`View Style=8`, preview on).
+`kio-extras` and `kdegraphics-thumbnailers` supply the image plugins.
 Upscayl is an x86_64 Arch application, so it is not installed. An image
 smaller than the panel is scaled to the panel with ImageMagick before it
 is applied. There is no Upscayl prompt.
@@ -49,11 +52,23 @@ scheme and GTK icon settings into `~/.config/frametop/hyprland` and
 `/usr/bin` on the session `PATH` and points Dolphin at those directories
 with `QT_QPA_PLATFORMTHEME=kde`. Host Plasma keeps `~/.config`.
 
-The laptop's `kde-material-you-colors` step needs a virtualenv that exists
-only on the laptop (`ILLOGICAL_IMPULSE_VIRTUAL_ENV`). A wallpaper change
-still updates `wallpaperPath` before that step. Recoloring every Qt app
-from a new download needs that tool, which is not on the Frame. Dolphin
-follows the colors that were already generated and copied into the session.
+A wallpaper change runs `matugen` from the container (Fedora's 3.1.0 build;
+it accepts the same templates and scheme names as the laptop's 4.2.0).
+`session/frame-wallpaper.sh` writes a config whose outputs are the session
+state `colors.json` and GTK css under `~/.config/frametop/hyprland`. It
+does not use the laptop's `~/.config/matugen/config.toml`, because those
+paths are the host config, and it does not run the laptop's pywalfox or
+sddm hooks. Quickshell watches that `colors.json` and repaints.
+
+`frame-kde-theme.py` then writes `FrametopEnd4.colors` and `kdeglobals`
+into the session directories Dolphin already uses. `ColorSchemeHash` is
+the SHA1 of the scheme file, which is what KDE compares when a running
+app decides to reload. The color virtualenv lives at
+`~/.local/share/frametop/hyprland/color-venv`. It is created in the
+container with `materialyoucolor` 2.0.10 and the container's Pillow,
+NumPy, and OpenCV. It is not a copy of the laptop venv.
+`kde-material-you-colors` is not run: that program writes
+`~/.config/kdeglobals` and asks Plasma's KWin to reconfigure.
 
 ## Audio
 
@@ -92,7 +107,7 @@ and hypridle stay out of the session launcher.
 | Conflict killer (`killall kded6`) | Returns before doing anything when `FT_FRAME_SESSION` is set |
 | Monitor brightness, DDC, suspend | No-ops or hidden |
 | Host Plasma session bus | Not imported. The nested session has its own bus |
-| `matugen` and the laptop color virtualenv | Not installed. Existing `colors.json` is the theme source |
+| `kde-material-you-colors` and the laptop color virtualenv | Not used. `matugen` and a session virtualenv write the frametop theme directories |
 
 ## Controller
 

@@ -212,6 +212,42 @@ SHELL_PATCHES = (
         '        fi\n',
     ),
     (
+        "quickshell/ii/scripts/colors/switchwall.sh",
+        '        source "$(eval echo $ILLOGICAL_IMPULSE_VIRTUAL_ENV)/bin/activate"\n'
+        '        "$SCRIPT_DIR"/scheme_for_image.py "$img" 2>/dev/null | tr -d \'\\n\'\n'
+        '        deactivate\n',
+        '        if [ -n "${FT_FRAME_SESSION:-}" ] && [ -f "$FT_FRAME_SESSION/frame-wallpaper.sh" ]; then\n'
+        '            # shellcheck disable=SC1091\n'
+        '            . "$FT_FRAME_SESSION/frame-wallpaper.sh"\n'
+        '            frame_scheme_for_image "$img"\n'
+        '            return\n'
+        '        fi\n'
+        '        source "$(eval echo $ILLOGICAL_IMPULSE_VIRTUAL_ENV)/bin/activate"\n'
+        '        "$SCRIPT_DIR"/scheme_for_image.py "$img" 2>/dev/null | tr -d \'\\n\'\n'
+        '        deactivate\n',
+    ),
+    (
+        "quickshell/ii/scripts/colors/switchwall.sh",
+        '    matugen "${matugen_args[@]}"\n'
+        '    source "$(eval echo $ILLOGICAL_IMPULSE_VIRTUAL_ENV)/bin/activate"\n'
+        '    python3 "$SCRIPT_DIR/generate_colors_material.py" "${generate_colors_material_args[@]}" \\\n'
+        '        > "$STATE_DIR"/user/generated/material_colors.scss\n'
+        '    deactivate\n'
+        '    "$SCRIPT_DIR"/applycolor.sh\n',
+        '    if [ -n "${FT_FRAME_SESSION:-}" ] && [ -f "$FT_FRAME_SESSION/frame-wallpaper.sh" ]; then\n'
+        '        # shellcheck disable=SC1091\n'
+        '        . "$FT_FRAME_SESSION/frame-wallpaper.sh"\n'
+        '        frame_recolor "${matugen_args[@]}"\n'
+        '        return\n'
+        '    fi\n'
+        '    matugen "${matugen_args[@]}"\n'
+        '    source "$(eval echo $ILLOGICAL_IMPULSE_VIRTUAL_ENV)/bin/activate"\n'
+        '    python3 "$SCRIPT_DIR/generate_colors_material.py" "${generate_colors_material_args[@]}" \\\n'
+        '        > "$STATE_DIR"/user/generated/material_colors.scss\n'
+        '    deactivate\n'
+        '    "$SCRIPT_DIR"/applycolor.sh\n',
+    ),
+    (
         "quickshell/ii/scripts/colors/random/random_konachan_wall.sh",
         "ext=$(echo \"$link\" | awk -F. '{print $NF}')\n",
         'if [ -n "${FT_FRAME_SESSION:-}" ] && [ -f "$FT_FRAME_SESSION/frame-wallpaper.sh" ]; then\n'

@@ -71,13 +71,23 @@ frame_scale_wallpaper() {
 }
 
 frame_pick_wallpaper() {
-  local dir
+  local dir config data
   dir=$(xdg-user-dir PICTURES 2>/dev/null || true)
   [ -n "$dir" ] || dir=$HOME/Pictures
   mkdir -p "$dir/Wallpapers"
+  config=${FT_APP_CONFIG_HOME:-$HOME/.config/frametop/hyprland}
+  data=${FT_APP_DATA_HOME:-$HOME/.local/share/frametop/hyprland}
+  if [ -n "${FT_FRAME_SESSION:-}" ] && [ -f "$FT_FRAME_SESSION/frame-kde-theme.py" ]; then
+    python3 "$FT_FRAME_SESSION/frame-kde-theme.py" --previews "$config" || true
+  fi
   if command -v kdialog >/dev/null 2>&1; then
-    QT_QPA_PLATFORM=${QT_QPA_PLATFORM:-wayland} \
-      kdialog --getopenfilename "$dir/Wallpapers" --title 'Choose wallpaper'
+    # The shell's own config home is the staged tree. The dialog has to read
+    # the session kdeglobals, where the preview view is turned on.
+    XDG_CONFIG_HOME=$config \
+      XDG_DATA_HOME=$data \
+      QT_QPA_PLATFORMTHEME=kde \
+      QT_QPA_PLATFORM=${QT_QPA_PLATFORM:-wayland} \
+      kdialog --getopenfilename "$dir/Wallpapers" '*.png *.jpg *.jpeg *.webp *.avif *.bmp|Images' --title 'Choose wallpaper'
     return
   fi
   if command -v zenity >/dev/null 2>&1; then
@@ -87,4 +97,98 @@ frame_pick_wallpaper() {
   notify-send -a "Wallpaper switcher" "No file chooser" \
     "kdialog is not installed in this session." >/dev/null 2>&1 || true
   return 1
+}
+
+frame_color_venv() {
+  printf '%s\n' "${FT_COLOR_VENV:-$HOME/.local/share/frametop/hyprland/color-venv}"
+}
+
+frame_scheme_for_image() {
+  local img=$1 py
+  py=$(frame_color_venv)/bin/python
+  if [ -x "$py" ] && [ -n "${SCRIPT_DIR:-}" ] && [ -f "$SCRIPT_DIR/scheme_for_image.py" ]; then
+    "$py" "$SCRIPT_DIR/scheme_for_image.py" "$img" 2>/dev/null | tr -d '\n'
+    return
+  fi
+  printf '%s' 'scheme-tonal-spot'
+}
+
+frame_write_matugen_config() {
+  local dest=$1 state_dir=$2 app_config=$3
+  local templates=$FT_FRAME_SESSION/matugen/templates
+  cat > "$dest" <<EOF
+[config]
+version_check = false
+
+[templates.m3colors]
+input_path = '$templates/colors.json'
+output_path = '$state_dir/user/generated/colors.json'
+
+[templates.gtk3]
+input_path = '$templates/gtk-3.0/gtk.css'
+output_path = '$app_config/gtk-3.0/gtk.css'
+
+[templates.gtk4]
+input_path = '$templates/gtk-4.0/gtk.css'
+output_path = '$app_config/gtk-4.0/gtk.css'
+
+[templates.source]
+input_path = '$templates/kde/color.txt'
+output_path = '$state_dir/user/generated/matugen-source.txt'
+EOF
+}
+
+# Generate session colors from a wallpaper. Arguments are matugen's own
+# (image PATH --mode dark --type scheme-tonal-spot). Outputs stay under the
+# session state and the frametop config home. This does not call
+# kde-material-you-colors and does not write the host's ~/.config.
+frame_recolor() {
+  local state_dir app_config app_data cfg py
+  state_dir=${XDG_STATE_HOME:-$HOME/.local/state}/quickshell
+  app_config=${FT_APP_CONFIG_HOME:-$HOME/.config/frametop/hyprland}
+  app_data=${FT_APP_DATA_HOME:-$HOME/.local/share/frametop/hyprland}
+  case "$app_config" in
+    "$HOME/.config"|"$HOME/.config/")
+      echo "frametop: refusing to recolor the host config" >&2
+      return 1
+      ;;
+  esac
+  case "$app_config" in
+    *frametop*) ;;
+    *)
+      echo "frametop: refusing theme path $app_config" >&2
+      return 1
+      ;;
+  esac
+  if [ -z "${FT_FRAME_SESSION:-}" ] || [ ! -f "$FT_FRAME_SESSION/matugen/templates/colors.json" ]; then
+    echo "frametop: matugen templates are not in this session" >&2
+    return 1
+  fi
+  mkdir -p "$state_dir/user/generated" "$app_config/gtk-3.0" "$app_config/gtk-4.0" "$app_data"
+  cfg=$(mktemp)
+  frame_write_matugen_config "$cfg" "$state_dir" "$app_config"
+  if [ -n "${FT_MATUGEN_CONFIG_COPY:-}" ]; then
+    cp "$cfg" "$FT_MATUGEN_CONFIG_COPY"
+  fi
+  if ! command -v matugen >/dev/null 2>&1; then
+    notify-send -a "Wallpaper switcher" "Colors were not updated" \
+      "matugen is not installed in this session." >/dev/null 2>&1 || true
+    rm -f "$cfg"
+    return 1
+  fi
+  if ! matugen --config "$cfg" "$@"; then
+    rm -f "$cfg"
+    return 1
+  fi
+  rm -f "$cfg"
+  py=$(frame_color_venv)/bin/python
+  if [ -x "$py" ] && [ -n "${SCRIPT_DIR:-}" ] && [ -f "$SCRIPT_DIR/generate_colors_material.py" ]; then
+    "$py" "$SCRIPT_DIR/generate_colors_material.py" ${generate_colors_material_args[@]+"${generate_colors_material_args[@]}"} \
+      > "$state_dir/user/generated/material_colors.scss" || true
+    if [ -f "$SCRIPT_DIR/applycolor.sh" ]; then
+      "$SCRIPT_DIR/applycolor.sh" || true
+    fi
+  fi
+  python3 "$FT_FRAME_SESSION/frame-kde-theme.py" \
+    "$state_dir/user/generated/colors.json" "$app_config" "$app_data"
 }

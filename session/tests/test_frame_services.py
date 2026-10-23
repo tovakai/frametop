@@ -65,7 +65,11 @@ class FrameServiceTests(unittest.TestCase):
             module.write_theme(colors, config, data)
             scheme = (data / "color-schemes" / "FrametopEnd4.colors").read_text()
             self.assertIn("BackgroundNormal=17,34,51", scheme)
-            self.assertIn("ColorScheme=FrametopEnd4", (config / "kdeglobals").read_text())
+            kdeglobals = (config / "kdeglobals").read_text()
+            self.assertIn("ColorScheme=FrametopEnd4", kdeglobals)
+            self.assertIn("Show Preview=true", kdeglobals)
+            self.assertIn("View Style=8", kdeglobals)
+            self.assertRegex(kdeglobals, r"ColorSchemeHash=[0-9a-f]{40}")
             with self.assertRaises(SystemExit):
                 module.write_theme(colors, Path.home() / ".config", data)
 

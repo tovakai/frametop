@@ -48,9 +48,14 @@ packages=(
   # not installed here; the container cannot attach to SteamOS's system bus.
   jq qalculate playerctl grim slurp libnotify cliphist python3-pillow
   xdg-user-dirs ffmpeg-free iw
-  # end-4's "Choose file" wallpaper button runs kdialog. Upscayl is not
-  # packaged for this ARM64 container; ImageMagick scales the image instead.
-  kdialog
+  # end-4's "Choose file" wallpaper button runs kdialog. The thumbnail
+  # plugins are what turn that list into pictures. Upscayl is not packaged
+  # for this ARM64 container; ImageMagick scales the image instead.
+  # matugen recolors the session from the wallpaper. numpy, pillow, and
+  # opencv are the container's own builds; materialyoucolor is installed
+  # into the session virtualenv, not copied from the laptop.
+  kdialog kio-extras kdegraphics-thumbnailers ffmpegthumbs
+  matugen python3-numpy python3-opencv python3-pip python3-devel
 )
 
 on_frame_script "$FRAME_REPO" "${packages[@]}" <<'EOF'

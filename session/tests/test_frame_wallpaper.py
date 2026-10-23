@@ -135,18 +135,90 @@ class FrameWallpaperTests(unittest.TestCase):
             bindir = root / "bin"
             bindir.mkdir()
             (bindir / "xdg-user-dir").write_text("#!/bin/sh\necho \"$FT_PICTURES\"\n")
-            (bindir / "kdialog").write_text("#!/bin/sh\nprintf '%s\\n' \"$2\"\n")
+            (bindir / "kdialog").write_text(
+                "#!/bin/sh\nprintf '%s|%s\\n' \"$QT_QPA_PLATFORMTHEME\" \"$XDG_CONFIG_HOME\" > \"$FT_KDIALOG_ENV\"\n"
+                "printf '%s\\n' \"$2\"\n"
+            )
             for name in ("xdg-user-dir", "kdialog"):
                 path = bindir / name
                 path.chmod(path.stat().st_mode | stat.S_IEXEC)
             pictures = root / "Pictures"
+            env_log = root / "kdialog.env"
             result = _bash(
                 f'. "{HELPER}"\nframe_pick_wallpaper\n',
-                {"PATH": f"{bindir}:/usr/bin:/bin", "FT_PICTURES": str(pictures), "HOME": str(root)},
+                {
+                    "PATH": f"{bindir}:/usr/bin:/bin",
+                    "FT_PICTURES": str(pictures),
+                    "HOME": str(root),
+                    "FT_FRAME_SESSION": str(ROOT / "session"),
+                    "FT_KDIALOG_ENV": str(env_log),
+                },
             )
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stdout.strip(), str(pictures / "Wallpapers"))
             self.assertTrue((pictures / "Wallpapers").is_dir())
+            theme, config_home = env_log.read_text().strip().split("|", 1)
+            self.assertEqual(theme, "kde")
+            self.assertIn("frametop", config_home)
+            self.assertIn("Show Preview=true", (root / ".config/frametop/hyprland/kdeglobals").read_text())
+
+    def test_recolor_writes_the_session_theme_only(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            bindir = root / "bin"
+            bindir.mkdir()
+            (bindir / "matugen").write_text(
+                "#!/bin/bash\n"
+                "cfg=\"\"\n"
+                "prev=\"\"\n"
+                "for arg in \"$@\"; do\n"
+                "  if [ \"$prev\" = \"--config\" ]; then cfg=$arg; fi\n"
+                "  prev=$arg\n"
+                "done\n"
+                "out=$(sed -n \"s/.*output_path = '\\(.*colors.json\\)'.*/\\1/p\" \"$cfg\")\n"
+                "mkdir -p \"$(dirname \"$out\")\"\n"
+                "printf '%s\\n' '{\"surface\":\"#112233\",\"on_surface\":\"#eeeeee\",\"primary\":\"#abcdef\"}' > \"$out\"\n"
+                "cp \"$cfg\" \"$FT_MATUGEN_LOG\"\n"
+            )
+            path = bindir / "matugen"
+            path.chmod(path.stat().st_mode | stat.S_IEXEC)
+            state = root / "state"
+            app_config = root / ".config" / "frametop" / "hyprland"
+            copied = root / "matugen.toml"
+            result = _bash(
+                f'. "{HELPER}"\nframe_recolor image "{root}/wall.png" --mode dark --type scheme-tonal-spot\n',
+                {
+                    "PATH": f"{bindir}:/usr/bin:/bin",
+                    "HOME": str(root),
+                    "XDG_STATE_HOME": str(state),
+                    "FT_APP_CONFIG_HOME": str(app_config),
+                    "FT_APP_DATA_HOME": str(root / "data"),
+                    "FT_FRAME_SESSION": str(ROOT / "session"),
+                    "FT_MATUGEN_CONFIG_COPY": str(copied),
+                    "FT_MATUGEN_LOG": str(copied),
+                },
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            colors = state / "quickshell/user/generated/colors.json"
+            self.assertIn("#112233", colors.read_text())
+            kdeglobals = (app_config / "kdeglobals").read_text()
+            self.assertIn("ColorScheme=FrametopEnd4", kdeglobals)
+            self.assertIn("Show Preview=true", kdeglobals)
+            config = copied.read_text()
+            self.assertIn(str(app_config / "gtk-3.0" / "gtk.css"), config)
+            self.assertNotIn(str(root / ".config" / "gtk-3.0"), config)
+            refused = _bash(
+                f'. "{HELPER}"\nframe_recolor image "{root}/wall.png"\n',
+                {
+                    "PATH": f"{bindir}:/usr/bin:/bin",
+                    "HOME": str(root),
+                    "FT_APP_CONFIG_HOME": str(root / ".config"),
+                    "FT_FRAME_SESSION": str(ROOT / "session"),
+                    "FT_MATUGEN_LOG": str(root / "should-not-run"),
+                },
+            )
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertFalse((root / "should-not-run").exists())
 
     def test_stage_patch_hooks_the_helper(self):
         stage = _load_stage()
@@ -163,6 +235,15 @@ class FrameWallpaperTests(unittest.TestCase):
                 'cd "$(xdg-user-dir PICTURES)/Wallpapers" 2>/dev/null || '
                 'cd "$(xdg-user-dir PICTURES)" || return 1\n'
                 '        imgpath="$(kdialog --getopenfilename . --title \'Choose wallpaper\')"\n'
+                '        source "$(eval echo $ILLOGICAL_IMPULSE_VIRTUAL_ENV)/bin/activate"\n'
+                '        "$SCRIPT_DIR"/scheme_for_image.py "$img" 2>/dev/null | tr -d \'\\n\'\n'
+                '        deactivate\n'
+                '    matugen "${matugen_args[@]}"\n'
+                '    source "$(eval echo $ILLOGICAL_IMPULSE_VIRTUAL_ENV)/bin/activate"\n'
+                '    python3 "$SCRIPT_DIR/generate_colors_material.py" "${generate_colors_material_args[@]}" \\\n'
+                '        > "$STATE_DIR"/user/generated/material_colors.scss\n'
+                '    deactivate\n'
+                '    "$SCRIPT_DIR"/applycolor.sh\n'
             )
             kona.write_text(
                 "ext=$(echo \"$link\" | awk -F. '{print $NF}')\n"
@@ -177,6 +258,8 @@ class FrameWallpaperTests(unittest.TestCase):
             text = switch.read_text()
             self.assertIn("frame_scale_wallpaper", text)
             self.assertIn("frame_pick_wallpaper", text)
+            self.assertIn("frame_recolor", text)
+            self.assertIn("frame_scheme_for_image", text)
             self.assertIn('ext=$(frame_image_ext "$link") || exit 1', kona.read_text())
             self.assertIn("frame_require_download", osu.read_text())
             self.assertEqual(stage.apply_frame_patches(dest), [])

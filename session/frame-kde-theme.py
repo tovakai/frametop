@@ -4,6 +4,7 @@
 Dolphin and other Qt apps launched by Hyprland read this session's
 XDG_CONFIG_HOME and XDG_DATA_HOME. The host's ~/.config is not a destination.
 """
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -47,6 +48,44 @@ def _group(data: dict, background: str, foreground: str, accent: str) -> str:
     ))
 
 
+def _preview_groups() -> str:
+    """KFileDialog's icon view. View Style 8 is KFile::PreviewContents."""
+    plugins = (
+        "imagethumbnail",
+        "jpegthumbnail",
+        "pngthumbnail",
+        "webpthumbnail",
+        "svgthumbnail",
+        "windowsimagethumbnail",
+        "directorythumbnail",
+    )
+    lines = [
+        "[KFileDialog Settings]",
+        "Show Preview=true",
+        "Show Preview Panel=true",
+        "View Style=8",
+        "",
+        "[PreviewSettings]",
+        "MaximumSize=10485760",
+    ]
+    lines.extend(f"{name}=true" for name in plugins)
+    return "\n".join(lines)
+
+
+def ensure_previews(config_home: Path) -> None:
+    """Add thumbnail settings without replacing a scheme already written."""
+    if not _allowed(config_home):
+        raise SystemExit(f"frametop: refusing to write a host theme directory: {config_home}")
+    config_home.mkdir(parents=True, exist_ok=True)
+    path = config_home / "kdeglobals"
+    text = path.read_text(encoding="utf-8") if path.is_file() else ""
+    if "Show Preview=true" in text and "View Style=8" in text and "[PreviewSettings]" in text:
+        return
+    if text and not text.endswith("\n"):
+        text += "\n"
+    path.write_text(text + _preview_groups() + "\n", encoding="utf-8")
+
+
 def write_theme(colors_path: Path, config_home: Path, data_home: Path) -> None:
     if not _allowed(config_home) or not _allowed(data_home):
         raise SystemExit(f"frametop: refusing to write a host theme directory: {config_home}")
@@ -83,17 +122,22 @@ def write_theme(colors_path: Path, config_home: Path, data_home: Path) -> None:
         )) + "\n",
         encoding="utf-8",
     )
+    # KColorScheme compares this to the scheme file and reloads a running app.
+    scheme_hash = hashlib.sha1(scheme.read_bytes()).hexdigest()
     config_home.mkdir(parents=True, exist_ok=True)
     (config_home / "kdeglobals").write_text(
         "\n".join((
             "[General]",
             "ColorScheme=FrametopEnd4",
+            f"ColorSchemeHash={scheme_hash}",
             "",
             "[Icons]",
             "Theme=breeze",
             "",
             "[KDE]",
             "widgetStyle=Breeze",
+            "",
+            _preview_groups(),
             "",
         )),
         encoding="utf-8",
@@ -113,8 +157,12 @@ def write_theme(colors_path: Path, config_home: Path, data_home: Path) -> None:
 
 
 def main(argv: list[str]) -> int:
+    if len(argv) == 2 and argv[0] == "--previews":
+        ensure_previews(Path(argv[1]))
+        return 0
     if len(argv) != 3:
         print("usage: frame-kde-theme.py COLORS.json CONFIG_HOME DATA_HOME", file=sys.stderr)
+        print("       frame-kde-theme.py --previews CONFIG_HOME", file=sys.stderr)
         return 2
     write_theme(Path(argv[0]), Path(argv[1]), Path(argv[2]))
     return 0
