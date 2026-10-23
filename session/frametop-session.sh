@@ -71,16 +71,27 @@ if [ "$backend" = gamescope ] && [ $((width * height)) -gt $((1920 * 1080)) ]; t
 fi
 
 if [ "${1:-}" != --inner ]; then
-  # One Plasma session at a time. The experimental Hyprland session uses another
-  # socket, so Plasma's ft-screens on ft-screens-0 stays up.
+  # One desktop at a time. Each compositor is identified by its socket, so
+  # stopping Plasma's ft-screens does not kill a Hyprland one, or the reverse.
   if [ "$desktop" = hyprland ]; then
     if pgrep -f '[f]t-screens --socket ft-hyprland-0' >/dev/null; then
-      echo "experimental Hyprland session is already running" >&2
+      echo "Hyprland desktop is already running" >&2
       exit 0
     fi
-  elif pgrep -f '[v]r-overlay-key frametop ' >/dev/null || pgrep -x ft-screens >/dev/null; then
-    echo "Frametop is already running" >&2
+    if pgrep -f '[f]t-screens --socket ft-screens-0' >/dev/null; then
+      echo "frametop: stopping the Plasma VR desktop before Hyprland" >&2
+      "$here/plasma-stop.sh"
+      for _ in $(seq 40); do
+        pgrep -f '[f]rametop-api/session/frametop-session.sh' >/dev/null || break
+        sleep 0.1
+      done
+    fi
+  elif pgrep -f '[v]r-overlay-key frametop ' >/dev/null || pgrep -f '[f]t-screens --socket ft-screens-0' >/dev/null; then
+    echo "Frametop Plasma is already running" >&2
     exit 0
+  elif pgrep -f '[f]t-screens --socket ft-hyprland-0' >/dev/null; then
+    echo "frametop: stopping the Hyprland desktop before Plasma" >&2
+    "$here/hyprland-stop.sh" || true
   fi
   # A SteamOS update could move either of the files sourced here. The desktop still
   # starts without them (scripts/update-check.py reports it).
@@ -128,7 +139,8 @@ if [ "${1:-}" != --inner ]; then
     . "$here/hyprland-env.sh"
     frametop_hyprland_require_one_panel
     socket=$FT_HYPRLAND_SOCKET
-    echo "frametop: experimental Hyprland VR session: 1 panel $FT_HYPRLAND_SCREEN (saved layout is not used)" >&2
+    echo "frametop: Hyprland desktop: 1 panel $FT_HYPRLAND_SCREEN (saved layout is not used)" >&2
+    echo "frametop: $(date -Is) Hyprland desktop from $here" >> /tmp/frametop-hyprland-session.log
     # Plasma already owns frametop.screen.1. This panel needs its own overlay key.
     export FT_OVERLAY_PREFIX=frametop.hypr
     "$here/../scripts/in-box" "$here/../screens/build/ft-screens" \
@@ -150,7 +162,9 @@ if [ "${1:-}" != --inner ]; then
   export FT_SCREEN_COUNT=$(( ${#screen_args[@]} / 2 )) FT_FLOAT_SLOTS=$float_slots
   "$here/../scripts/in-box" "$here/../screens/build/ft-screens" --socket "$socket" \
     "${screen_args[@]}" --spares "$float_slots" > /tmp/frametop-screens.log 2>&1 < /dev/null &
-  stop_screens() { pkill -x ft-screens 2>/dev/null || true; }
+  # This compositor's wrapper, plus Plasma's own socket. A name-wide kill would
+  # also stop a Hyprland panel.
+  stop_screens() { "$here/plasma-stop.sh"; kill "$screens_pid" 2>/dev/null || true; }
   trap stop_screens EXIT
   for _ in $(seq 100); do [ -S "$XDG_RUNTIME_DIR/$socket" ] && break; sleep 0.2; done
   [ -S "$XDG_RUNTIME_DIR/$socket" ] || { echo "ft-screens didn't start (see /tmp/frametop-screens.log)" >&2; exit 1; }

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Plasma Desktop
+Comment=Original Frametop Plasma desktop (recovery)
+Exec=@PLASMA_LAUNCHER@
+Categories=Utility;
+Icon=desktop
+X-Steam-Library-Capsule=/usr/share/applications/steam/steamos-nested-desktop/capsule.png
+X-Steam-Library-Hero=/usr/share/applications/steam/steamos-nested-desktop/hero.png
+X-Steam-Library-Logo=/usr/share/applications/steam/steamos-nested-desktop/logo.png
+X-Steam-Library-StoreCapsule=/usr/share/applications/steam/steamos-nested-desktop/store-logo.png
+X-Steam-Controller-Template=Desktop

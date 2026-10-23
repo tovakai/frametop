@@ -1,8 +1,57 @@
-# Experimental nested Hyprland session
+# Hyprland desktop
 
-This branch is a smoke test, **not** a finished end-4/Quickshell port.
-No installers, live sessions or Steam launchers are modified by checking out
-this branch. Plasma remains the default (`DESKTOP=plasma`).
+SteamVR's **Desktop** entry launches this Hyprland session with the staged
+end-4 shell. Plasma stays available as a separate **Plasma Desktop** entry
+and is not started beside it.
+
+The installed tree is pinned at
+`~/.local/share/frametop/hyprland-desktop/current` (a symlink to
+`releases/<commit>`). Wallpaper, colors, and the end-4 config live outside
+that tree, in `~/.local/share/frametop/hyprland-desktop/config`,
+`~/.config/frametop/hyprland`, and `~/.local/state/frametop/hyprland`, so a
+later pin does not wipe them. `~/frametop-api` is not modified. It is the
+Plasma recovery tree.
+
+```text
+~/.local/bin/frametop-desktop status
+~/.local/bin/frametop-desktop use hyprland
+~/.local/bin/frametop-desktop use plasma
+~/.local/bin/frametop-desktop rollback
+```
+
+`use plasma` and `rollback` start the `frametop-api` session. Neither clears
+the input relay's file-descriptor store. Rollback restores the desktop
+entry, input rules, layout file, and relay drop-in saved at install time.
+
+Install from a tested checkout on the Frame (it must already contain
+`screens/build/ft-screens`, `build/aquamarine`, and `stage/config`):
+
+```text
+session/install-hyprland-desktop.sh --activate
+```
+
+The panel is one 1920×1080 surface, 1.5 m wide, on sockets `ft-hyprland-0`
+and `ft_hyprland`. Quickshell is a client: if it fails to start or exits,
+Hyprland keeps running. The Fedora `dev` container is started by
+`scripts/in-box` when the compositor launches.
+
+## Not supported on this desktop
+
+These stay unavailable instead of pretending to work:
+
+- More than one spatial panel. `FT_SCREEN_COUNT` other than 1 is refused,
+  and the saved Plasma layout is not read.
+- KWin floating windows, the float decoration, and Launch as Standalone.
+- The VNC / remote-desktop bridge (`desktops.sh remote`).
+- KWin-only startup (text-input method, spare outputs, layout auto-arrange).
+
+Controller chords (Trigger as modifier, Trigger+R3 closes the focused
+window) bind only while this session's route file is live and the desktop
+is focused. They drop for SteamVR, a game, pause, or when Plasma's
+`ft-screens-0` compositor is the one running.
+
+Checking out the branch does not by itself change the Steam launcher. The
+installer above does.
 
 ## Architecture
 

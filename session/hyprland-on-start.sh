@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Runs only inside the nested Hyprland process environment (never on SteamOS).
 set -euo pipefail
+here=$(dirname "$(readlink -f "$0")")
 count=${FT_SCREEN_COUNT:-1}
 if ! [[ $count =~ ^[1-9][0-9]*$ ]] || (( count > 24 )); then
   echo "frametop: invalid FT_SCREEN_COUNT for output startup: $count" >&2

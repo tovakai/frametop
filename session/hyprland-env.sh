@@ -88,7 +88,7 @@ frametop_cmdline_is_hyprland_screens() {
 
 # Stop this experimental session only. $1 is the repo root (for Hyprland's
 # config path), $2 the Wayland socket name, $3 the optional in-box wrapper pid.
-# Never uses pkill -x ft-screens.
+# Never kills every compositor by process name.
 frametop_stop_hyprland_session() {
   local root=$1 socket=$2 wrapper=${3:-} pid cmd
   local session_dir=$root/session/
@@ -101,8 +101,11 @@ frametop_stop_hyprland_session() {
     [ -n "$cmd" ] || continue
     if frametop_cmdline_is_hyprland_screens "$cmd" "$socket" ||
        [[ $cmd == *"Hyprland -c ${session_dir}"* ]] ||
+       [[ $cmd == *"hyprland-frame.lua"* ]] ||
        [[ $cmd == *"hyprland-key-forward.py"* ]] ||
-       [[ $cmd == *"frame-desktopd.py"* ]]; then
+       [[ $cmd == *"frame-desktopd.py"* ]] ||
+       [[ $cmd == *"frame-quickshell.sh"* ]] ||
+       [[ $cmd == *"qs -c ii"* ]]; then
       kill "$pid" 2>/dev/null || true
     fi
   done

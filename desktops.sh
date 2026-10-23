@@ -22,8 +22,8 @@ stock=/usr/share/applications/deckard-nested-desktop.desktop
 log=/tmp/frametop-session.log
 # Bracketed first letter so pgrep/pkill never match the ssh shell running them.
 match='[v]r-overlay-key frametop '
-# Is either backend's desktop running? (gamescope, or ft-screens)
-running="{ pgrep -f '$match' >/dev/null || pgrep -x ft-screens >/dev/null; }"
+# Socket-specific. A name-wide ft-screens match would treat Hyprland and Plasma as one process.
+running="{ pgrep -f '$match' >/dev/null || pgrep -f '[f]t-screens --socket ft-hyprland-0' >/dev/null || pgrep -f '[f]t-screens --socket ft-screens-0' >/dev/null; }"
 
 case $action in
   start)
@@ -89,7 +89,7 @@ if pgrep -f '[k]rdpserver --plasma' >/dev/null; then echo 'capture (krdp, 127.0.
         "$frame" --host "set -e
 systemctl --user daemon-reload; systemctl --user enable $unit
 echo 'enabled; starts before SteamVR on the next reboot or SteamVR restart'" ;;
-      uninstall) "$frame" --host "systemctl --user disable --now $unit 2>/dev/null; systemctl --user clean --what=fdstore $unit 2>/dev/null; rm -f ~/.config/systemd/user/$unit; systemctl --user daemon-reload; echo removed" ;;
+      uninstall) "$frame" --host "systemctl --user disable --now $unit 2>/dev/null; rm -f ~/.config/systemd/user/$unit; systemctl --user daemon-reload; echo removed" ;;
       status) "$frame" --host "systemctl --user is-enabled $unit 2>/dev/null; systemctl --user is-active $unit 2>/dev/null
 echo \"fd store: \$(systemctl --user show -p NFileDescriptorStore --value $unit)\"
 p=\$(pgrep -x vrserver | head -1); [ -n \"\$p\" ] && for e in \$(ls -l /proc/\$p/fd 2>/dev/null | grep -oE 'event[0-9]+( \\(deleted\\))?' | sort -u | tr ' ' '_'); do n=\${e%%_*}; echo \"vrserver has \$e: \$(cat /sys/class/input/\$n/device/name 2>/dev/null)\"; done; true" ;;
@@ -102,9 +102,9 @@ p=\$(pgrep -x vrserver | head -1); [ -n \"\$p\" ] && for e in \$(ls -l /proc/\$p
     # its unit (session/keep-apps.sh), so background work in them outlives the restart.
     "$frame" --host "$running || { echo 'not running'; exit 0; }
 $session/keep-apps.sh
-systemctl --user stop frametop-desktop 2>/dev/null; pkill -x ft-screens; pkill -f '$match'
+systemctl --user stop frametop-desktop 2>/dev/null || true
+$session/desktop-stop.sh
 for i in \$(seq 20); do $running || { echo stopped; exit 0; }; sleep 0.5; done
-pkill -KILL -x ft-screens
 pkill -KILL -f '$match'; sleep 1
 pkill -f '[m]ultidesk-session.sh --inner' 2>/dev/null; pkill -f '[k]rdpserver --plasma' 2>/dev/null
 pkill -f '[X]vnc :20 ' 2>/dev/null; pkill -f '[x]freerdp /v:.*:3390' 2>/dev/null

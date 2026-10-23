@@ -1,5 +1,5 @@
 {
-  "note": "Experimental and inactive. Merge controller_chords into the headset rules only after the input relay restart is approved. Remove that object to revert. Do not set controller_in_games for these buttons.",
+  "note": "Installed with the Hyprland desktop. Trigger is the modifier. controller_in_games stays false so these chords are not active in a game. Rollback restores the previous input rules file.",
   "controller_in_games": false,
   "controller_chords": {
     "modifier": "right/trigger",

@@ -191,16 +191,22 @@ test "$status" = 2
         self.assertNotIn("screen-args", hypr)
         self.assertNotIn("pkill -x", hypr)
         self.assertIn("screen-args", plasma)
-        self.assertIn("pkill -x ft-screens", plasma)
+        self.assertIn("plasma-stop.sh", plasma)
+        self.assertNotIn("pkill -x", plasma)
         stop = (ROOT / "session" / "hyprland-stop.sh").read_text()
         self.assertIn("frametop_stop_hyprland_session", stop)
         self.assertNotIn("pkill", stop)
 
     def test_hyprland_runtime_dir_fits_socket_path(self):
+        import re
+        assign = re.compile(r"(^|\s)(export\s+)?XDG_RUNTIME_DIR=")
         for name in ("hyprland-smoke.sh", "frametop-hyprland.sh"):
             text = (ROOT / "session" / name).read_text()
             self.assertIn("mktemp -d /tmp/ftH.XXXXXX", text, name)
-            self.assertNotIn("/run/user", text, name)
+            for line in text.splitlines():
+                code = line.split("#", 1)[0]
+                if assign.search(code) and "/run/user" in code:
+                    self.fail(f"{name} assigns Hyprland's runtime under /run/user: {line.strip()}")
 
     def test_protocol_checker_accepts_matching_globals(self):
         script = ROOT / "session" / "hyprland-protocol-check.py"
