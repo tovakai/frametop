@@ -101,7 +101,8 @@ frametop_stop_hyprland_session() {
     [ -n "$cmd" ] || continue
     if frametop_cmdline_is_hyprland_screens "$cmd" "$socket" ||
        [[ $cmd == *"Hyprland -c ${session_dir}"* ]] ||
-       [[ $cmd == *"hyprland-key-forward.py"* ]]; then
+       [[ $cmd == *"hyprland-key-forward.py"* ]] ||
+       [[ $cmd == *"frame-desktopd.py"* ]]; then
       kill "$pid" 2>/dev/null || true
     fi
   done

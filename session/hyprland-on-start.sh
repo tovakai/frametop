@@ -26,6 +26,12 @@ fi
 if command -v cliphist >/dev/null 2>&1 && command -v wl-paste >/dev/null 2>&1; then
   setsid wl-paste --watch cliphist store >/dev/null 2>&1 < /dev/null &
 fi
+# Stay up for the life of this runtime. Controller presses talk to it
+# instead of starting a container for each button.
+if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ ! -S "$XDG_RUNTIME_DIR/frametop-desktop.sock" ]; then
+  setsid python3 "$here/frame-desktopd.py" "$XDG_RUNTIME_DIR/frametop-desktop.sock" \
+    >/dev/null 2>&1 < /dev/null &
+fi
 if command -v foot >/dev/null 2>&1; then
   exec foot
 elif command -v kitty >/dev/null 2>&1; then

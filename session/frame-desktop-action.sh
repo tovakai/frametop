@@ -37,6 +37,18 @@ if [ "${FT_DESKTOP_INNER:-}" != 1 ]; then
   exported=$(python3 "$here/../input/desktop_route.py" --export "$route") || exit $?
   # shellcheck disable=SC1090
   eval "$exported"
+  # The session keeps frame-desktopd.py in the container. A press then costs
+  # one socket write instead of a new container entry.
+  desktop_sock=$FT_ROUTE_RUNTIME/frametop-desktop.sock
+  if [ -S "$desktop_sock" ]; then
+    set +e
+    python3 "$here/frame-desktopd.py" --send "$desktop_sock" "$action"
+    status=$?
+    set -e
+    if [ "$status" -ne 111 ]; then
+      exit "$status"
+    fi
+  fi
   runner=$here/../scripts/in-box
   if [ -n "${FT_DESKTOP_RUNNER:-}" ]; then
     runner=$FT_DESKTOP_RUNNER

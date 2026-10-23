@@ -5,9 +5,11 @@ These do not start Hyprland, Quickshell, SteamVR, or the input relay.
 import importlib.util
 import json
 import os
+import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -234,6 +236,77 @@ class FrameDesktopTests(unittest.TestCase):
             missing = root / "missing.route"
             result = run(SESSION / "frame-desktop-action.sh", "close", FT_HYPR_ROUTE=str(missing), HOME=str(root))
             self.assertEqual(result.returncode, 2, result.stderr)
+
+    def test_socket_skips_the_container_runner(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            runtime = root / "runtime"
+            (runtime / "hypr" / "sig").mkdir(parents=True)
+            route = root / "frametop-hyprland.route"
+            route.write_text(
+                f"pid={os.getpid()}\ncontrol=ft_hyprland\nruntime={runtime}\n"
+                f"wayland=/tmp/ft-hyprland-test\nconfig_home={root / 'stage'}\n"
+            )
+            (root / "stage").mkdir()
+            got = []
+            ready = threading.Event()
+
+            def serve():
+                server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                server.bind(str(runtime / "frametop-desktop.sock"))
+                server.listen(1)
+                ready.set()
+                conn, _addr = server.accept()
+                with conn:
+                    got.append(conn.recv(64))
+                    conn.sendall(b"0\n")
+                server.close()
+
+            thread = threading.Thread(target=serve)
+            thread.start()
+            self.assertTrue(ready.wait(2))
+            log = root / "runner.log"
+            runner = root / "runner"
+            runner.write_text("#!/bin/sh\necho called >> \"$FT_TEST_LOG\"\n")
+            runner.chmod(0o755)
+            result = run(
+                SESSION / "frame-desktop-action.sh",
+                "workspace-next",
+                FT_HYPR_ROUTE=str(route),
+                FT_DESKTOP_RUNNER=str(runner),
+                FT_TEST_LOG=str(log),
+                HOME=str(root),
+            )
+            thread.join(2)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(got, [b"workspace-next\n"])
+            self.assertFalse(log.exists())
+
+    def test_daemon_runs_the_inner_action(self):
+        desktopd = _load("frame_desktopd", SESSION / "frame-desktopd.py")
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            script = root / "action.sh"
+            log = root / "action.log"
+            script.write_text(
+                "#!/bin/sh\nprintf '%s %s\\n' \"$FT_DESKTOP_INNER\" \"$1\" > \"$FT_TEST_LOG\"\n"
+            )
+            script.chmod(0o755)
+            sock = root / "frametop-desktop.sock"
+            previous = os.environ.get("FT_TEST_LOG")
+            os.environ["FT_TEST_LOG"] = str(log)
+            self.addCleanup(lambda: os.environ.pop("FT_TEST_LOG", None) if previous is None else os.environ.__setitem__("FT_TEST_LOG", previous))
+            thread = threading.Thread(target=desktopd.serve, args=(str(sock), str(script)), daemon=True)
+            thread.start()
+            for _ in range(50):
+                if sock.exists():
+                    break
+                thread.join(0.02)
+            self.assertTrue(sock.exists())
+            self.assertEqual(desktopd.send(str(sock), "workspace-prev"), 0)
+            self.assertEqual(log.read_text().strip(), "1 workspace-prev")
+            self.assertEqual(desktopd.send(str(sock), "nope"), 2)
+            self.assertEqual(desktopd.send(str(sock), "ping"), 0)
 
     def test_forwarder_keeps_keys_and_drops_layout_commands(self):
         self.assertTrue(hyprland_key_forward.allowed(b"key 28 1"))

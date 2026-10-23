@@ -210,6 +210,9 @@ arrived while the guard was disarmed, so the close never ran. A VR game,
 pause, typing leaving the desktop, or the route file disappearing clears
 the modifier. The buttons stay unbound while `controller_in_games` is set.
 The commands are `command:frame-desktop-action.sh`, the file on `PATH`.
+The session starts `frame-desktopd.py` inside the container. A press sends
+the action name to that process. Starting a container for every press took
+about a third of a second; the socket path does not.
 
 ## Relay deployment
 
