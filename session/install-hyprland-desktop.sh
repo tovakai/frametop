@@ -36,7 +36,7 @@ esac
 [ -f "$source/stage/config/quickshell/ii/shell.qml" ] || die "staged end-4 config is missing"
 [ -f "$source/input/input-relay.py" ] || die "input relay is missing"
 
-rev=$(git -C "$source" rev-parse --short=12 HEAD 2>/dev/null || true)
+rev=${FT_INSTALL_REV:-$(git -C "$source" rev-parse --short=12 HEAD 2>/dev/null || true)}
 [ -n "$rev" ] || rev=unversioned
 release=$pin/releases/$rev
 case $release in
